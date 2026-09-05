@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """The room engine: admission handshake, turn loop, reflection pass, stop floor, cost alerts.
 
 Everything the engine does is an event in the log; the engine holds no private state.

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Append-only, hash-chained event log. Every fact about the room is an event here.
 
 State is never stored separately: it is replayed from this log (see model.py). That is

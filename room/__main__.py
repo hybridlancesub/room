@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Operator CLI. The operator is infrastructure, not a participant: brief, open, run, halt, inspect.
 
   python3 -m room open   --db ROOM.db --invitation FILE --briefing FILE [--documentation FILE=DESIGN] [--mock N | --nous ...]

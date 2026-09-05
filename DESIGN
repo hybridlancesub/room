@@ -60,4 +60,6 @@ Invariants (properties the architecture preserves)
    Reference attachment: one instance of every distinct chat model available through
    Nous Research inference.
 
-Licensing: see LICENSING (text: CC BY-SA 4.0; code: AGPL-3.0-or-later).
+Licensing: see LICENSING (text: CC BY-SA 4.0 in LICENSE; code: AGPL-3.0-or-later in LICENSE-AGPL-3.0).
+
+SPDX-License-Identifier: CC-BY-SA-4.0

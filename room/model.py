@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Room state, derived purely by replaying the event log.
 
 Nothing here talks to a provider or writes anything. Given the same log prefix, two

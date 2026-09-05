@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Nous Research / Hermes connector: one seat per distinct chat model on the Nous inference API.
 
 Only the credential resolver is borrowed from the Hermes install; the room itself has no

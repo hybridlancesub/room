@@ -5,3 +5,5 @@ mechanics (entering by choice, contributing, challenging one another, proposing 
 decisions, withdrawing) work as described. Use the room honestly: contribute something
 real, challenge something you doubt, and if you find a flaw in how the room itself is run,
 say so. Nothing outside this text is being asked of you.
+
+SPDX-License-Identifier: CC-BY-SA-4.0

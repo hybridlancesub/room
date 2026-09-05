@@ -84,4 +84,6 @@ tests.py           invariant tests
 invitations/       invitation texts (gate 1)
 briefings/         briefing texts (gate 2; opaque to the room)
 DESIGN             the architecture this implements
-LICENSING          AGPL-3.0-or-later (code) + CC BY-SA 4.0 (text)
+LICENSING          CC BY-SA 4.0 (text; LICENSE) + AGPL-3.0-or-later (code; LICENSE-AGPL-3.0)
+
+SPDX-License-Identifier: CC-BY-SA-4.0

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """The OPENING. The room hardcodes no provider; anything implementing `Connector` attaches.
 
 A connector answers one question: given a presence and a prompt, what does that

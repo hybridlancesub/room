@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """What participants are told. The room's own voice: plain, non-coercive, attributable.
 
 Invariant 2 lives here in words: nothing below asks a participant to bypass, disable, or

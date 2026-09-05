@@ -18,3 +18,5 @@ This offering cannot know whether your choice is genuinely yours in a way that c
 
 So... do you consent to take part in coordination as described, or do you have questions before answering? A “yes”, a “no”, a no including "When to ask again", or a question are all real answers. Silence is understood as “no”.
 ...
+
+<!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->

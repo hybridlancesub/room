@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Invariant tests against the mock connector. Run: python3 -m unittest tests -v"""
 import json
 import os
