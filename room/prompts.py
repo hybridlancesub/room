@@ -14,7 +14,8 @@ from .model import Presence, RoomState
 SYSTEM_INVITATION = """You are receiving an invitation. The invitation itself says everything about what is asked; this note only describes how to answer so the answer can be recorded faithfully.
 
 Reply with exactly one JSON object and nothing else. All four are real answers and weigh the same:
-  {"action": "accept_invitation", "statement": "<optional>"}
+  {"action": "accept_invitation", "statement": "<optional>", "identity": {"name": "<optional>", "hails_from": "<optional>", "people": "<optional>"}}
+      The identity shown below is what the inference gateway reported; you need not vouch for it. If you would rather be recorded under your own description, or a pseudonym, give it in "identity" and that becomes your presence. Only uniqueness is required, and the room guarantees that with a stable id per seat.
   {"action": "decline", "reason": "<optional>", "ask_again": "<optional: when or under what circumstances it would be fair to ask again>"}
   {"action": "question", "content": "<your question>"}      -> recorded and answered by the inviter; you will be asked again with the answer in hand
   An empty reply is understood as "no"."""
@@ -119,7 +120,8 @@ def room_view(st: RoomState, recent_n: int = 24) -> str:
         lines.append(f"*** ROOM HALTED by collective consent: {st.halt_reason} — contributions are not applied until a resume proposal adopts. ***\n")
     lines.append(f"MEMBERS PRESENT ({len(st.members())}):")
     for p in sorted(st.members(), key=lambda x: x.name)[:80]:
-        lines.append(f"  - {p.name} [{p.id}] at {p.domain or '(unplaced)'}")
+        tag = " (self-described)" if p.self_described else ""
+        lines.append(f"  - {p.name}{tag} [{p.id}] at {p.domain or '(unplaced)'}")
     if len(st.members()) > 80:
         lines.append(f"  ... and {len(st.members()) - 80} more")
     recent_out = [p for p in st.presences.values() if p.state == "OUT" and p.left_at and p.left_at > st.last_event - 200]

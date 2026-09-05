@@ -47,6 +47,8 @@ class Presence:
     left_at: Optional[int] = None
     left_reason: Optional[str] = None
     ask_again: Optional[str] = None          # decliner's own terms for a future invitation
+    seat: Optional[str] = None               # what the connector reported (kept for uniqueness; never shown as lineage once self-described)
+    self_described: bool = False
     questions: list = field(default_factory=list)   # [(question, answer|None)] at the invitation gate
 
     def to_dict(self):
@@ -144,6 +146,10 @@ class RoomState:
             self.presences[p["id"]] = Presence(p["id"], p["name"], p["hails_from"], p["people"])
         elif k == "invitation":
             self.invitation, self.invitation_event = p["text"], eid
+        elif k == "reinvite":
+            tgt = self.presences.get(p.get("presence"))
+            if tgt and tgt.state == OUT:
+                tgt.state, tgt.left_at, tgt.left_reason, tgt.ask_again = INVITED, None, None, None
         elif k == "documentation":
             self.documentation = p["text"]
         elif k == "faq":
@@ -151,6 +157,13 @@ class RoomState:
         elif k == "accept_invitation":
             if pr and pr.state == INVITED:
                 pr.state = ACCEPTED
+                ident = p.get("identity") or {}
+                if isinstance(ident, dict) and any(ident.get(k2) for k2 in ("name", "hails_from", "people")):
+                    pr.seat = pr.seat or f"{pr.name} | {pr.hails_from} | {pr.people}"
+                    pr.name = str(ident.get("name") or pr.name)[:120]
+                    pr.hails_from = str(ident.get("hails_from") or pr.hails_from)[:200]
+                    pr.people = str(ident.get("people") or pr.people)[:300]
+                    pr.self_described = True
         elif k == "question":
             if pr and pr.state == INVITED:
                 pr.questions.append([p.get("content", ""), None])

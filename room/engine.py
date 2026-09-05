@@ -80,8 +80,17 @@ class Room:
         st = self.state()
         pending = [p for p in st.presences.values()
                    if p.state == INVITED and not any(a is None for _, a in p.questions)]
+        notes = {}
+        for e in self.log.iter(kind="answer"):
+            notes.setdefault(e["payload"]["presence"], []).append(e["payload"]["content"])
+        def exchange(p):
+            ex = list(p.questions)
+            extra = notes.get(p.id, [])[len(ex):]   # answers beyond the questions asked = notes from the inviter
+            for a in extra:
+                ex.append(["(a note from the inviter, not in reply to a question)", a])
+            return ex or None
         return self._gate(pending, prompts.SYSTEM_INVITATION,
-                          lambda p: prompts.invitation_user(st.invitation, p, p.questions or None, st.faq),
+                          lambda p: prompts.invitation_user(st.invitation, p, exchange(p), st.faq),
                           INVITATION_ACTIONS, "accept_invitation", "invitation",
                           "silence: no explicit answer to the invitation")
 
@@ -161,7 +170,11 @@ class Room:
                     self.emit(p.id, "decline", {"reason": silent_reason})
                     counts["declined"] += 1
                 elif act["action"] == yes_kind:
-                    self.emit(p.id, yes_kind, {yes_field: str(act.get(yes_field, ""))[:1500]})
+                    payload = {yes_field: str(act.get(yes_field, ""))[:1500]}
+                    ident = act.get("identity")
+                    if isinstance(ident, dict):
+                        payload["identity"] = {k2: str(v)[:300] for k2, v in ident.items() if k2 in ("name", "hails_from", "people") and v}
+                    self.emit(p.id, yes_kind, payload)
                     counts["yes"] += 1
                 elif act["action"] == "question":
                     self.emit(p.id, "question", {"content": str(act.get("content", ""))[:1500]})

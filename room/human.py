@@ -100,7 +100,13 @@ def translate(line: str, *, gate: bool = False, entry: bool = False, delivery: b
         return {"action": "received", "note": note}
     if gate or entry:
         if low.startswith("yes"):
-            return {"action": "accept_invitation" if gate else "opt_in", "statement": s[3:].strip()}
+            rest = s[3:].strip()
+            d = {"action": "accept_invitation" if gate else "opt_in", "statement": rest}
+            if gate and rest.lower().startswith("as "):
+                parts = [x.strip() for x in rest[3:].split("/")]
+                d["identity"] = {k: v for k, v in zip(("name", "hails_from", "people"), parts) if v}
+                d["statement"] = ""
+            return d
         if low.startswith("no"):
             rest = s[2:].strip()
             reason, _, again = rest.partition("/")

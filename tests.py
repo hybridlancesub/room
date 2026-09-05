@@ -156,6 +156,18 @@ class RoomTest(unittest.TestCase):
         c = room.run_invitation()          # must not raise
         self.assertEqual(c["declined"], 1)
 
+    def test_self_described_identity_replaces_gateway_string_but_keeps_unique_id(self):
+        def f(seat, system, messages):
+            if "accept_invitation" in system.lower():
+                return json.dumps({"action": "accept_invitation", "identity": {"name": "Claude (Anthropic), model unverified", "people": "this conversation only"}})
+            return json.dumps({"action": "received"})
+        conn = MockConnector(1, f)
+        room = Room(EventLog(os.path.join(self.tmp, "i.db")), [conn], alert_fn=self.alerts.append)
+        room.invite_all(); room.invite_text(INVITE); room.run_invitation()
+        p = room.state().presences["mock-0"]
+        self.assertEqual((p.id, p.name, p.people, p.hails_from), ("mock-0", "Claude (Anthropic), model unverified", "this conversation only", "mock"))
+        self.assertTrue(p.self_described and p.seat.startswith("Mock 0 |"))
+
     def test_decline_records_own_terms_for_asking_again(self):
         def f(seat, system, messages):
             return json.dumps({"action": "decline", "reason": "not now", "ask_again": "after the first reflection report exists"})
