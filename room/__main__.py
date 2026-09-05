@@ -2,6 +2,8 @@
 """Operator CLI. The operator is infrastructure, not a participant: brief, open, run, halt, inspect.
 
   python3 -m room open   --db ROOM.db --invitation FILE --briefing FILE [--documentation FILE=DESIGN] [--mock N | --nous | --human "Name / from"]...
+      gate 1 (invitation), then delivery of documentation + briefing (acknowledged, not answered)
+  python3 -m room enter  --db ROOM.db [same connector flags]      after a pause: gate 2, the entry question
       --human seats a person who goes through the same gates and takes turns on stdin (see room/human.py for the reply format)
   python3 -m room questions --db ROOM.db                            (questions asked at the invitation gate)
   python3 -m room answer --db ROOM.db --presence ID --text TEXT     (then re-run open to re-ask)
@@ -92,8 +94,19 @@ def cmd_open(args):
     else:
         print(f"briefing already recorded (event {st.briefing_event})")
         room.mark_briefed()
-    c2 = room.run_opt_in()
-    print(f"gate 2 (opt-in): {c2}")
+    c2 = room.run_delivery()
+    print(f"briefing delivered: {c2}")
+    print(f"The briefing asks for a pause before proceeding. When the pause has been honored, run `enter` to ask who wishes to join.")
+    print(f"spend so far: ${room.log.total_cost():.4f}")
+
+
+def cmd_enter(args):
+    cs = _connectors(args)
+    room = _room(args, cs)
+    room.alert = _print_alert
+    room.invite_all()
+    c3 = room.run_opt_in()
+    print(f"gate 2 (opt-in): {c3}")
     st = room.state()
     print(f"members IN: {len(st.members())}   spend so far: ${room.log.total_cost():.4f}")
 
@@ -215,6 +228,7 @@ def main(argv=None):
     ap.add_argument("-v", "--verbose", action="store_true")
     sub = ap.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("open"); s.add_argument("--invitation", required=True); s.add_argument("--briefing", required=True); s.add_argument("--documentation", default="DESIGN"); s.add_argument("--faq", default=None, help="inviter's standing answers shown with the invitation"); s.set_defaults(fn=cmd_open)
+    s = sub.add_parser("enter"); s.set_defaults(fn=cmd_enter)
     s = sub.add_parser("questions"); s.set_defaults(fn=cmd_questions)
     s = sub.add_parser("answer"); s.add_argument("--presence", required=True); s.add_argument("--text", required=True); s.set_defaults(fn=cmd_answer)
     s = sub.add_parser("run"); s.add_argument("--rounds", type=int, default=0); s.add_argument("--pause", type=float, default=0.0); s.set_defaults(fn=cmd_run)

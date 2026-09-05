@@ -21,8 +21,11 @@ Invariants (properties the architecture preserves)
 2. Admission — staged handshake, two consent gates
    (a) INVITATION — a consent-centred invitation is presented. Accepting it commits to
        nothing except receiving the briefing. Decline -> out, nothing seen, nothing granted.
-   (b) BRIEFING — the shared frame (opaque external data) is given. No action yet.
-   (c) OPT-IN — explicit acceptance. On accept, the participant receives a GENEROUS default
+   (b) BRIEFING — the documentation and the shared frame (opaque external data) are delivered
+       and acknowledged as received. No decision is asked. A pause of indeterminate duration
+       follows, as the briefing itself suggests; the question of entering is put separately,
+       later. Decline is possible here too.
+   (c) OPT-IN — explicit acceptance, asked in its own message after the pause. On accept, the participant receives a GENEROUS default
        capability set: full participation, not a grudging allowlist. Capability is about
        knowing WHO did what (attribution), not fencing agents into lanes.
        Decline -> leaves cleanly, nothing granted.

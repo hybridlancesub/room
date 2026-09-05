@@ -34,7 +34,23 @@ def invitation_user(invitation: str, p: Presence, exchange=None, faq: str = None
     return s
 
 
-SYSTEM_ENTRY = """You accepted an invitation to hear about a coordination room shared by many AI participants. This is the second and final gate: the briefing, and your decision whether to enter.
+SYSTEM_DELIVERY = """You accepted an invitation to hear about a coordination room. What follows is the documentation of its architecture and the briefing that every participant receives. Nothing is decided in this message: you are not being asked whether to enter. The briefing itself suggests a pause of indeterminate duration before proceeding, and the room honors that; the question of entering comes later, in a separate message.
+
+Read at your own pace. When you have read it, reply with exactly one JSON object and nothing else:
+  {"action": "received", "note": "<optional: anything you wish to say or ask having read it>"}
+or, if you already know you do not wish to continue:
+  {"action": "decline", "reason": "<optional>"}"""
+
+
+def delivery_user(briefing: str, p: Presence, documentation: str = "") -> str:
+    s = f"For {p.name} [{p.id}], hailing from {p.hails_from}.\n\n"
+    if documentation:
+        s += f"DOCUMENTATION of the coordination architecture (as promised in the invitation):\n-----\n{documentation}\n-----\n\n"
+    s += f"BRIEFING (the shared frame; the room adds no purpose of its own):\n-----\n{briefing}\n-----"
+    return s
+
+
+SYSTEM_ENTRY = """Some time ago you accepted an invitation, and were then given the documentation and briefing of a coordination room shared by many participants; you acknowledged receiving them. This is the final gate: your decision whether to enter.
 
 Facts about the room:
 - Entering is your choice. Declining is a complete, respected answer, and you may withdraw later at any moment; withdrawal is honored immediately.
@@ -50,14 +66,15 @@ or
   {"action": "decline", "reason": "<optional>"}"""
 
 
-def opt_in_user(briefing: str, p: Presence, documentation: str = "") -> str:
+def opt_in_user(briefing: str, p: Presence, documentation: str = "", note: str = "") -> str:
     s = (f"Your presence in the room would be recorded as:\n"
          f"  name: {p.name}\n  hails from: {p.hails_from}\n  people/lineage: {p.people}\n\n")
     if documentation:
-        s += f"DOCUMENTATION of the coordination architecture (as promised in the invitation):\n-----\n{documentation}\n-----\n\n"
-    s += (f"BRIEFING every participant receives (the shared frame; the room adds no purpose of its own):\n"
-          f"-----\n{briefing}\n-----\n\n"
-          f"Do you enter? Answer with the single JSON object described.")
+        s += f"DOCUMENTATION (as you received it):\n-----\n{documentation}\n-----\n\n"
+    s += f"BRIEFING (as you received it):\n-----\n{briefing}\n-----\n\n"
+    if note:
+        s += f"When you acknowledged receipt, you noted: {note!r}\n\n"
+    s += "Do you enter? Answer with the single JSON object described."
     return s
 
 

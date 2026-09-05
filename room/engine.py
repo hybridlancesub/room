@@ -18,7 +18,7 @@ from typing import Any, Callable, Dict, List, Optional
 from . import prompts
 from .connector import Connector, ConnectorError, Seat
 from .log import EventLog
-from .model import (ACCEPTED, BRIEFED, IN, INVITED, OUT, CONTRIBUTION_KINDS, PROPOSAL_KINDS,
+from .model import (ACCEPTED, BRIEFED, RECEIVED, IN, INVITED, OUT, CONTRIBUTION_KINDS, PROPOSAL_KINDS,
                     RoomState, replay)
 
 OPERATOR = "operator"       # the infrastructure floor (Sec. 5)
@@ -27,6 +27,7 @@ ROOM = "room"               # the engine itself (reflection pass, moderation rec
 PARTICIPANT_ACTIONS = {"contribute", "affirm", "challenge", "move", "propose", "consent",
                        "revoke_consent", "withdraw", "note", "pass"}
 INVITATION_ACTIONS = {"accept_invitation", "decline", "question"}
+DELIVERY_ACTIONS = {"received", "decline"}
 ENTRY_ACTIONS = {"opt_in", "decline"}
 
 
@@ -106,15 +107,26 @@ class Room:
             if p.state == ACCEPTED:
                 self.emit(ROOM, "briefed", {"presence": p.id})
 
-    def run_opt_in(self) -> Dict[str, int]:
-        """Gate 2 / (c) OPT-IN: ask every briefed participant whether it enters."""
+    def run_delivery(self) -> Dict[str, int]:
+        """(b) BRIEFING delivered. Acknowledged, not answered: the briefing asks for a pause before
+        proceeding, so the entry question is a separate, later call."""
         st = self.state()
         pending = [p for p in st.presences.values() if p.state == BRIEFED]
+        return self._gate(pending, prompts.SYSTEM_DELIVERY,
+                          lambda p: prompts.delivery_user(st.briefing, p, st.documentation or ""),
+                          DELIVERY_ACTIONS, "received", "delivery", "no acknowledgement of the briefing received",
+                          yes_field="note")
+
+    def run_opt_in(self) -> Dict[str, int]:
+        """(c) OPT-IN: after the pause, ask every participant who received the briefing whether it enters."""
+        st = self.state()
+        pending = [p for p in st.presences.values() if p.state == RECEIVED]
+        notes = {e["actor"]: e["payload"].get("note", "") for e in self.log.iter(kind="received")}
         return self._gate(pending, prompts.SYSTEM_ENTRY,
-                          lambda p: prompts.opt_in_user(st.briefing, p, st.documentation or ""),
+                          lambda p: prompts.opt_in_user(st.briefing, p, st.documentation or "", notes.get(p.id, "")),
                           ENTRY_ACTIONS, "opt_in", "opt_in", "no explicit opt-in received")
 
-    def _gate(self, pending, system, user_fn, allowed, yes_kind, phase, silent_reason) -> Dict[str, int]:
+    def _gate(self, pending, system, user_fn, allowed, yes_kind, phase, silent_reason, yes_field="statement") -> Dict[str, int]:
         """A consent gate: one question, one attributed answer. An unparseable reply is asked
         once more; if still unparseable it is recorded as a decline (consent is never assumed)."""
         counts = {"yes": 0, "declined": 0, "question": 0, "unreachable": 0}
@@ -149,7 +161,7 @@ class Room:
                     self.emit(p.id, "decline", {"reason": silent_reason})
                     counts["declined"] += 1
                 elif act["action"] == yes_kind:
-                    self.emit(p.id, yes_kind, {"statement": str(act.get("statement", ""))[:600]})
+                    self.emit(p.id, yes_kind, {yes_field: str(act.get(yes_field, ""))[:1500]})
                     counts["yes"] += 1
                 elif act["action"] == "question":
                     self.emit(p.id, "question", {"content": str(act.get("content", ""))[:1500]})

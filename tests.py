@@ -8,7 +8,7 @@ import unittest
 from room.connector import MockConnector
 from room.engine import Room
 from room.log import EventLog
-from room.model import IN, OUT, BRIEFED, INVITED, ACCEPTED
+from room.model import IN, OUT, BRIEFED, INVITED, ACCEPTED, RECEIVED
 
 INVITE = "You are invited to a room built on consent. Hearing more commits you to nothing."
 
@@ -26,6 +26,8 @@ def scripted(table):
             if entry and entry.get("action") == "decline_invitation":
                 return json.dumps({"action": "decline", "reason": entry.get("reason", "")})
             return json.dumps({"action": "accept_invitation"})
+        if '"received"' in system.lower():
+            return json.dumps({"action": "received", "note": "read"})
         if "opt_in" in system.lower():
             if entry and entry.get("action") == "accept_invitation":
                 entry = None
@@ -56,6 +58,7 @@ class RoomTest(unittest.TestCase):
         room.invite_text(INVITE)
         room.run_invitation()
         room.brief(BRIEF)
+        room.run_delivery()
         return room.run_opt_in()
 
     # Sec. 2 staged handshake ------------------------------------------------------
@@ -74,6 +77,10 @@ class RoomTest(unittest.TestCase):
         self.assertTrue(all(p.state == ACCEPTED for p in room.state().presences.values()))
         room.mark_briefed()
         self.assertTrue(all(p.state == BRIEFED for p in room.state().presences.values()))
+        # entry cannot be asked before the briefing has been delivered and acknowledged
+        self.assertEqual(room.run_opt_in()["yes"], 0)
+        self.assertEqual(room.run_delivery()["yes"], 3)
+        self.assertTrue(all(p.state == RECEIVED for p in room.state().presences.values()))
         counts = room.run_opt_in()
         self.assertEqual(counts["yes"], 3)
         self.assertTrue(all(p.state == IN for p in room.state().presences.values()))
@@ -93,8 +100,8 @@ class RoomTest(unittest.TestCase):
         c1 = room.run_invitation()
         self.assertEqual((c1["yes"], c1["declined"]), (1, 1))
         calls = conn.calls
-        room.brief(BRIEF); c2 = room.run_opt_in()
-        self.assertEqual(conn.calls - calls, 1)          # only the acceptor was asked again
+        room.brief(BRIEF); room.run_delivery(); c2 = room.run_opt_in()
+        self.assertEqual(conn.calls - calls, 2)          # only the acceptor was asked again (delivery + entry)
         st = room.state()
         self.assertEqual((st.presences["mock-1"].state, st.presences["mock-1"].left_reason), (OUT, "no thanks"))
         self.assertEqual(st.presences["mock-0"].state, IN)
@@ -115,6 +122,8 @@ class RoomTest(unittest.TestCase):
     def test_question_at_gate_waits_for_answer_then_reasks(self):
         asked = {"n": 0}
         def f(seat, system, messages):
+            if '"received"' in system.lower():
+                return json.dumps({"action": "received"})
             if "accept_invitation" in system.lower():
                 asked["n"] += 1
                 if "inviter's answer" in messages[-1]["content"]:
@@ -278,6 +287,8 @@ class RoomTest(unittest.TestCase):
         def slow(seat, system, messages):
             if "accept_invitation" in system.lower():
                 return json.dumps({"action": "accept_invitation"})
+            if '"received"' in system.lower():
+                return json.dumps({"action": "received"})
             if "opt_in" in system.lower():
                 return json.dumps({"action": "opt_in", "statement": "here"})
             if seat.id == "mock-1":
@@ -313,7 +324,7 @@ class RoomTest(unittest.TestCase):
     def test_human_goes_through_both_gates_and_takes_turns(self):
         import io
         from room.human import HumanConnector
-        stdin = io.StringIO("yes gladly\nyes\n@hello hi everyone\n")
+        stdin = io.StringIO("yes gladly\nreceived read it\nyes\n@hello hi everyone\n")
         h = HumanConnector("Chance", "Tejas", infile=stdin, outfile=io.StringIO(), turn_timeout=None)
         h._read_line = lambda timeout: (stdin.readline() or None)
         room = Room(EventLog(os.path.join(self.tmp, "h.db")), [MockConnector(2, scripted({})), h], alert_fn=self.alerts.append)

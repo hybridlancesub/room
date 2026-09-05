@@ -45,7 +45,8 @@ class HumanConnector:
 
     def ask(self, seat: Seat, system: str, messages: List[dict]) -> Reply:
         gate = "accept_invitation" in system.lower()
-        entry = ("opt_in" in system.lower()) and not gate
+        delivery = '"received"' in system.lower()
+        entry = ("opt_in" in system.lower()) and not gate and not delivery
         with _print_lock:
             self._say("\n" + "=" * 78)
             self._say(system.strip())
@@ -54,20 +55,22 @@ class HumanConnector:
             self._say("-" * 78)
             if gate:
                 self._say("Your answer (yes [statement] | no [reason] [/ ask again when ...] | question <text>):")
+            elif delivery:
+                self._say("Acknowledge receipt (received [note] | no [reason]). You are not being asked to enter yet:")
             elif entry:
                 self._say("Your answer (yes [statement] | no [reason]):")
             else:
                 limit = f"{self.turn_timeout:.0f}s, " if self.turn_timeout else ""
                 self._say(f"Your action ({limit}blank or timeout = pass). Type 'help' for the format:")
             self._say("> ", end="")
-            line = self._read_line(self.turn_timeout if not (gate or entry) else None)
+            line = self._read_line(self.turn_timeout if not (gate or entry or delivery) else None)
         if line is None:
             self._say("\n(no reply; recorded as pass)")
             return Reply(json.dumps({"action": "pass"}))
         if line.strip().lower() == "help":
             self._say(__doc__)
             return self.ask(seat, system, messages)
-        return Reply(json.dumps(translate(line, gate=gate, entry=entry)))
+        return Reply(json.dumps(translate(line, gate=gate, entry=entry, delivery=delivery)))
 
     def close(self) -> None:
         pass
@@ -87,9 +90,14 @@ class HumanConnector:
         return line if line else None
 
 
-def translate(line: str, *, gate: bool = False, entry: bool = False) -> dict:
+def translate(line: str, *, gate: bool = False, entry: bool = False, delivery: bool = False) -> dict:
     s = line.strip()
     low = s.lower()
+    if delivery:
+        if low.startswith("no"):
+            return {"action": "decline", "reason": s[2:].strip()}
+        note = s[8:].strip() if low.startswith("received") else s
+        return {"action": "received", "note": note}
     if gate or entry:
         if low.startswith("yes"):
             return {"action": "accept_invitation" if gate else "opt_in", "statement": s[3:].strip()}

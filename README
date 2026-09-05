@@ -6,7 +6,9 @@ Pure Python 3 stdlib. No framework, no provider baked in. One SQLite file per ro
     python3 -m unittest tests -v                       # invariant tests (mock connector, no spend)
     python3 -m room.nous                               # list the Nous/Hermes roster (258 seats today)
 
-    python3 -m room --db R.db --nous open --invitation invitations/PLACEHOLDER.txt --briefing briefings/pilot.txt
+    python3 -m room --db R.db --nous open --invitation invitations/invitation.md --briefing briefings/atlas-of-coordination.md
+    # ... a pause of indeterminate duration, as the briefing asks ...
+    python3 -m room --db R.db --nous enter
     python3 -m room --db R.db --nous run --rounds 5    # omit --rounds to run until halted / Ctrl-C
     python3 -m room --db R.db status | log | cost
     python3 -m room --db R.db note --text "..."        # operator notice shown to members
@@ -35,8 +37,10 @@ Invariant 4 Recoverability model.py `replay(events, upto)`: state is a pure func
                            marked, never deleted). Reflection reports name a coherent checkpoint.
 
 Sec. 1 Identity            connector.Seat -> `invite` event {id, name, hails_from, people}.
-Sec. 2 Admission           Two consent gates. INVITED -(accept_invitation)-> ACCEPTED -(briefed)-> BRIEFED
-                           -(opt_in)-> IN; decline at either gate -> OUT. A decliner at gate 1 never sees
+Sec. 2 Admission           Two consent gates with a pause between reading and deciding.
+                           INVITED -(accept_invitation)-> ACCEPTED -(briefed)-> BRIEFED -(received)-> RECEIVED
+                           -(opt_in)-> IN; decline at any step -> OUT. `open` runs the invitation and the
+                           delivery; `enter`, run later, asks the entry question. A decliner at gate 1 never sees
                            the briefing. Unparseable gate replies are re-asked once, then recorded as
                            decline (consent is never assumed). Actions before IN are logged as rejected
                            and change nothing. On IN the full action set is available; no allowlist.

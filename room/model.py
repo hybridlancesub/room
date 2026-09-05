@@ -14,9 +14,11 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Set
 
 # admission stages -----------------------------------------------------------
-# INVITED --accept_invitation--> ACCEPTED --briefed--> BRIEFED --opt_in--> IN
-# decline is possible at either gate (invitation or briefing) and leads to OUT.
-INVITED, ACCEPTED, BRIEFED, IN, OUT = "INVITED", "ACCEPTED", "BRIEFED", "IN", "OUT"
+# INVITED --accept_invitation--> ACCEPTED --briefed--> BRIEFED --received--> RECEIVED --opt_in--> IN
+# The briefing is delivered in one call (acknowledged, not answered) and the entry question is
+# asked in a later, separate call, so a pause sits between reading and deciding.
+# decline is possible at any gate and leads to OUT.
+INVITED, ACCEPTED, BRIEFED, RECEIVED, IN, OUT = "INVITED", "ACCEPTED", "BRIEFED", "RECEIVED", "IN", "OUT"
 
 # proposal kinds the collective can decide by consent
 PROPOSAL_KINDS = ("halt", "resume", "restore", "cadence", "quorum")
@@ -164,8 +166,11 @@ class RoomState:
             tgt = self.presences.get(p["presence"])
             if tgt and tgt.state == ACCEPTED:
                 tgt.state = BRIEFED
-        elif k == "opt_in":
+        elif k == "received":
             if pr and pr.state == BRIEFED:
+                pr.state = RECEIVED
+        elif k == "opt_in":
+            if pr and pr.state == RECEIVED:
                 pr.state, pr.joined_at = IN, eid
         elif k == "decline":
             if pr and pr.state != OUT:
