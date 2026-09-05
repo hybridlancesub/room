@@ -69,6 +69,7 @@ class RoomState:
     invitation: Optional[str] = None
     invitation_event: Optional[int] = None
     documentation: Optional[str] = None      # architecture docs shown at gate 2
+    faq: Optional[str] = None                # inviter's standing answers to common invitation-gate questions
     briefing: Optional[str] = None
     briefing_event: Optional[int] = None
     settings: Dict[str, Any] = field(default_factory=lambda: dict(DEFAULT_SETTINGS))
@@ -143,6 +144,8 @@ class RoomState:
             self.invitation, self.invitation_event = p["text"], eid
         elif k == "documentation":
             self.documentation = p["text"]
+        elif k == "faq":
+            self.faq = p["text"]
         elif k == "accept_invitation":
             if pr and pr.state == INVITED:
                 pr.state = ACCEPTED
@@ -216,7 +219,8 @@ class RoomState:
 
     def _maybe_resolve(self, prop: Proposal, eid: int) -> None:
         live = {p.id for p in self.reachable_members()}
-        if len(prop.consents & live) < self.threshold():
+        need = len(live) if prop.kind == "restore" else self.threshold()   # setting the record aside takes everyone
+        if len(prop.consents & live) < max(1, need):
             return
         prop.resolved_at, prop.outcome = eid, "adopted"
         if prop.kind == "halt":

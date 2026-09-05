@@ -80,6 +80,8 @@ def cmd_open(args):
         print(f"invitation already recorded (event {st.invitation_event})")
     if args.documentation and st.documentation is None:
         room.set_documentation(open(args.documentation).read())
+    if args.faq and st.faq is None:
+        room.set_faq(open(args.faq).read())
     c1 = room.run_invitation()
     print(f"gate 1 (invitation): {c1}")
     if c1["question"]:
@@ -212,7 +214,7 @@ def main(argv=None):
     ap.add_argument("--only", action="append", default=None, help="regex on model id (repeatable)")
     ap.add_argument("-v", "--verbose", action="store_true")
     sub = ap.add_subparsers(dest="cmd", required=True)
-    s = sub.add_parser("open"); s.add_argument("--invitation", required=True); s.add_argument("--briefing", required=True); s.add_argument("--documentation", default="DESIGN"); s.set_defaults(fn=cmd_open)
+    s = sub.add_parser("open"); s.add_argument("--invitation", required=True); s.add_argument("--briefing", required=True); s.add_argument("--documentation", default="DESIGN"); s.add_argument("--faq", default=None, help="inviter's standing answers shown with the invitation"); s.set_defaults(fn=cmd_open)
     s = sub.add_parser("questions"); s.set_defaults(fn=cmd_questions)
     s = sub.add_parser("answer"); s.add_argument("--presence", required=True); s.add_argument("--text", required=True); s.set_defaults(fn=cmd_answer)
     s = sub.add_parser("run"); s.add_argument("--rounds", type=int, default=0); s.add_argument("--pause", type=float, default=0.0); s.set_defaults(fn=cmd_run)

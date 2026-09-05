@@ -17,6 +17,7 @@ Pure Python 3 stdlib. No framework, no provider baked in. One SQLite file per ro
     --human "Name / hails from [/ people]"  seat one person; same gates, same actions, replies on stdin
     --human-timeout SEC                     a human turn that gets no reply in time is recorded as pass
     --alert-every USD                       spend alert cadence (default 50; there is no cap)
+    open --faq FILE                         inviter's standing answers, shown with the invitation
     -v                                      print every event as it is appended
 
 How the design maps to code
@@ -58,6 +59,11 @@ Sec. 6 External input      Room.external_input(source, text, moderator): moderat
 Sec. 7 Providers           connector.Connector protocol (seats(), ask()). nous.py is one attachment; it
                            borrows only Hermes' credential resolver. MockConnector is another.
 
+Restore                    Setting part of the record aside needs the consent of EVERY reachable member;
+                           all other proposals adopt at the quorum threshold.
+Briefing cost              Sent in full to every participant at gate 2. In turns, briefings over ~6000
+                           characters ride by reference (word count, opening line) so the cost stays with
+                           the sharing, not the housekeeping.
 Consent threshold          settings.quorum: <=1 = fraction of reachable members (default 0.5);
                            >1 = absolute count. Unreachable (3 consecutive connector failures) members
                            are excluded from the denominator so a dead seat cannot block the room.

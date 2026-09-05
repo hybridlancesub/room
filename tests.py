@@ -239,7 +239,9 @@ class RoomTest(unittest.TestCase):
         later = [c for c in room.state().contributions if c > checkpoint]
         self.assertTrue(later)
         room._apply_action("mock-0", json.dumps({"action": "propose", "kind": "restore", "value": checkpoint, "reason": "drift"}))
-        # threshold ceil(0.5*2)=1 -> adopts immediately
+        self.assertFalse(room.state().set_aside)        # restore needs everyone, not the quorum
+        rid = room.state().open_proposals()[0].id
+        room._apply_action("mock-1", json.dumps({"action": "consent", "proposal": rid}))
         st = room.state()
         self.assertTrue(all(c in st.set_aside for c in later))
         self.assertTrue(all(c not in st.contributions for c in later))

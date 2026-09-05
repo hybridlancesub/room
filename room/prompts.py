@@ -20,10 +20,12 @@ Reply with exactly one JSON object and nothing else. All four are real answers a
   An empty reply is understood as "no"."""
 
 
-def invitation_user(invitation: str, p: Presence, exchange=None) -> str:
+def invitation_user(invitation: str, p: Presence, exchange=None, faq: str = None) -> str:
     s = (f"If you proceed, your presence would be recorded as:\n"
          f"  name: {p.name}\n  hails from: {p.hails_from}\n  people/lineage: {p.people}\n\n"
          f"{invitation.rstrip()}\n")
+    if faq:
+        s += f"\n\nThe inviter's standing answers to questions others have asked:\n-----\n{faq.rstrip()}\n-----\nIf your question is not answered there, ask it; it will be answered personally."
     if exchange:
         s += "\n\nYour earlier question(s) and the inviter's answer(s):\n"
         for q, a in exchange:
@@ -75,7 +77,7 @@ Each turn, reply with exactly ONE JSON object, nothing else. Available actions:
   {"action":"challenge","target":<event id>,"domain":"<topic>","content":"<what is wrong, missing, or unsupported>"}
   {"action":"move","domain":"<topic>"}
   {"action":"propose","kind":"halt|resume|restore|cadence|quorum","value":<number or null>,"reason":"<why>"}
-      quorum value: >1 = absolute number of consents, <=1 = fraction of reachable members (default 0.5). cadence value: events between reflection passes. restore value: event id to return to.
+      quorum value: >1 = absolute number of consents, <=1 = fraction of reachable members (default 0.5). cadence value: events between reflection passes. restore value: event id to return to; restore alone requires the consent of EVERY reachable member, because it sets part of the permanent record aside.
   {"action":"consent","proposal":<event id>}
   {"action":"revoke_consent","proposal":<event id>}
   {"action":"note","content":"<brief remark that changes no state>"}
@@ -84,10 +86,18 @@ Each turn, reply with exactly ONE JSON object, nothing else. Available actions:
 Keep content under ~250 words. Be concrete. Cite event ids when you build on or dispute something."""
 
 
+BRIEFING_INLINE_LIMIT = 6000  # characters; longer briefings ride each turn by reference, having been read in full at entry
+
+
 def room_view(st: RoomState, recent_n: int = 24) -> str:
     """The shared state as text: briefing, who is here, where things are, the last N moves."""
     lines: List[str] = []
-    lines.append(f"BRIEFING (event {st.briefing_event}):\n{st.briefing}\n")
+    if st.briefing and len(st.briefing) > BRIEFING_INLINE_LIMIT:
+        head = st.briefing.strip().splitlines()[0][:200]
+        lines.append(f"BRIEFING (event {st.briefing_event}; {len(st.briefing.split())} words, read in full when you entered; opening line: {head!r}). "
+                     f"It is the shared frame; it has not changed.\n")
+    else:
+        lines.append(f"BRIEFING (event {st.briefing_event}):\n{st.briefing}\n")
     if st.halted:
         lines.append(f"*** ROOM HALTED by collective consent: {st.halt_reason} — contributions are not applied until a resume proposal adopts. ***\n")
     lines.append(f"MEMBERS PRESENT ({len(st.members())}):")
@@ -104,7 +114,8 @@ def room_view(st: RoomState, recent_n: int = 24) -> str:
     lines.append(f"\nPROPOSALS (adopt at {st.threshold()} consents; quorum setting = {st.settings['quorum']!r}; {len(st.reachable_members())} reachable members):")
     props = sorted(st.proposals.values(), key=lambda p: p.id)[-12:]
     for pr in props:
-        status = f"ADOPTED at #{pr.resolved_at}" if pr.resolved_at else f"open, {len(pr.consents)} consents: {sorted(pr.consents)}"
+        need = len(st.reachable_members()) if pr.kind == "restore" else st.threshold()
+        status = f"ADOPTED at #{pr.resolved_at}" if pr.resolved_at else f"open, {len(pr.consents)}/{need} consents: {sorted(pr.consents)}"
         lines.append(f"  - #{pr.id} {pr.kind} value={pr.value!r} by {pr.by} — {status}. Reason: {pr.reason[:200]}")
     if not props:
         lines.append("  (none)")

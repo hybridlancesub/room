@@ -80,7 +80,7 @@ class Room:
         pending = [p for p in st.presences.values()
                    if p.state == INVITED and not any(a is None for _, a in p.questions)]
         return self._gate(pending, prompts.SYSTEM_INVITATION,
-                          lambda p: prompts.invitation_user(st.invitation, p, p.questions or None),
+                          lambda p: prompts.invitation_user(st.invitation, p, p.questions or None, st.faq),
                           INVITATION_ACTIONS, "accept_invitation", "invitation",
                           "silence: no explicit answer to the invitation")
 
@@ -90,6 +90,11 @@ class Room:
 
     def set_documentation(self, text: str) -> None:
         self.emit(OPERATOR, "documentation", {"text": text})
+
+    def set_faq(self, text: str) -> None:
+        """Standing answers, written by the inviter, offered with the invitation. A question the
+        FAQ does not cover still waits for a personal answer."""
+        self.emit(OPERATOR, "faq", {"text": text})
 
     def brief(self, text: str) -> None:
         """(b) BRIEFING: the shared frame is recorded once, then each accepted presence is marked briefed."""
