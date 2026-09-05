@@ -291,6 +291,42 @@ class RoomTest(unittest.TestCase):
         errs = [e for e in room.log.iter(kind="connector_error") if e["actor"] == "mock-1"]
         self.assertTrue(errs and "deadline" in errs[-1]["payload"]["error"])
 
+    # human seat -----------------------------------------------------------------------------
+    def test_human_translation_covers_every_action(self):
+        from room.human import translate as t
+        self.assertEqual(t("yes I'm here", gate=True), {"action": "accept_invitation", "statement": "I'm here"})
+        self.assertEqual(t("no not now / ask again when there is a record", gate=True),
+                         {"action": "decline", "reason": "not now", "ask_again": "ask again when there is a record"})
+        self.assertEqual(t("question who reads it?", gate=True), {"action": "question", "content": "who reads it?"})
+        self.assertEqual(t("yes", entry=True), {"action": "opt_in", "statement": ""})
+        self.assertEqual(t("hello all")["action"], "contribute")
+        self.assertEqual(t("@weather it is raining"), {"action": "contribute", "domain": "weather", "content": "it is raining"})
+        self.assertEqual(t("+12 well said"), {"action": "affirm", "target": 12, "domain": None, "content": "well said"})
+        self.assertEqual(t("-12 @x no"), {"action": "challenge", "target": 12, "domain": "x", "content": "no"})
+        self.assertEqual(t("propose quorum 0.3 -- too high"), {"action": "propose", "kind": "quorum", "value": 0.3, "reason": "too high"})
+        self.assertEqual(t("consent 7"), {"action": "consent", "proposal": 7})
+        self.assertEqual(t(""), {"action": "pass"})
+        self.assertEqual(t("withdraw done"), {"action": "withdraw", "reason": "done"})
+
+    def test_human_goes_through_both_gates_and_takes_turns(self):
+        import io
+        from room.human import HumanConnector
+        stdin = io.StringIO("yes gladly\nyes\n@hello hi everyone\n")
+        h = HumanConnector("Chance", "Tejas", infile=stdin, outfile=io.StringIO(), turn_timeout=None)
+        h._read_line = lambda timeout: (stdin.readline() or None)
+        room = Room(EventLog(os.path.join(self.tmp, "h.db")), [MockConnector(2, scripted({})), h], alert_fn=self.alerts.append)
+        self.open(room)
+        st = room.state()
+        p = st.presences["human__chance"]
+        self.assertEqual((p.state, p.hails_from, p.people), (IN, "Tejas", "human"))
+        room.round()
+        mine = [e for e in room.state().contributions.values() if e["actor"] == "human__chance"]
+        self.assertEqual(mine[0]["payload"], {"domain": "hello", "content": "hi everyone"})
+        # timeout -> pass, room does not block
+        h._read_line = lambda timeout: None
+        room.round()
+        self.assertEqual(room.state().presences["human__chance"].state, IN)
+
     # cost alert ----------------------------------------------------------------------------------
     def test_cost_alert_fires_at_each_multiple_without_capping(self):
         room, _ = self.make(1, alert_every=50.0)

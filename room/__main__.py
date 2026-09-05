@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Operator CLI. The operator is infrastructure, not a participant: brief, open, run, halt, inspect.
 
-  python3 -m room open   --db ROOM.db --invitation FILE --briefing FILE [--documentation FILE=DESIGN] [--mock N | --nous ...]
+  python3 -m room open   --db ROOM.db --invitation FILE --briefing FILE [--documentation FILE=DESIGN] [--mock N | --nous | --human "Name / from"]...
+      --human seats a person who goes through the same gates and takes turns on stdin (see room/human.py for the reply format)
   python3 -m room questions --db ROOM.db                            (questions asked at the invitation gate)
   python3 -m room answer --db ROOM.db --presence ID --text TEXT     (then re-run open to re-ask)
   python3 -m room run    --db ROOM.db [--rounds N] [--pause SEC] [--parallel N] [--alert-every USD]
@@ -32,8 +33,15 @@ def _connectors(args):
     if args.nous:
         from . import nous
         cs.append(nous.build(limit=args.limit, only=args.only))
+    if args.human:
+        from .human import HumanConnector
+        parts = [x.strip() for x in args.human.split("/")]
+        if len(parts) < 2:
+            sys.exit('--human needs "Name / where you hail from [/ your people]"')
+        cs.append(HumanConnector(parts[0], parts[1], parts[2] if len(parts) > 2 else "human",
+                                 turn_timeout=args.human_timeout))
     if not cs:
-        sys.exit("need --mock N and/or --nous")
+        sys.exit("need --mock N, --nous, and/or --human")
     return cs
 
 
@@ -41,11 +49,13 @@ def _room(args, connectors=None):
     log = EventLog(args.db)
     room = Room(log, connectors or [], alert_every_usd=args.alert_every, parallel=args.parallel,
                 round_deadline=args.round_deadline,
-                on_event=(lambda ev: print(_fmt(ev), flush=True)) if getattr(args, "verbose", False) else None)
+                on_event=(lambda ev: _fmt(ev) and print(_fmt(ev), flush=True)) if getattr(args, "verbose", False) else None)
     return room
 
 
 def _fmt(ev):
+    if ev["kind"] == "connector_ok":
+        return None
     p = ev["payload"]
     body = json.dumps(p, ensure_ascii=False)
     if len(body) > 220:
@@ -164,7 +174,9 @@ def cmd_status(args):
 def cmd_log(args):
     room = _room(args)
     for ev in room.log.iter(since=args.since, kind=args.kind, actor=args.actor):
-        print(_fmt(ev) if not args.full else json.dumps(ev, ensure_ascii=False))
+        line = json.dumps(ev, ensure_ascii=False) if args.full else _fmt(ev)
+        if line:
+            print(line)
 
 
 def cmd_cost(args):
@@ -194,6 +206,8 @@ def main(argv=None):
     ap.add_argument("--round-deadline", type=float, default=300.0, help="seconds to wait for the slowest seat each round")
     ap.add_argument("--mock", type=int, default=0)
     ap.add_argument("--nous", action="store_true")
+    ap.add_argument("--human", help='seat one human participant: "Name / hails from [/ people]"; answers gates and turns on stdin')
+    ap.add_argument("--human-timeout", type=float, default=180.0, help="seconds a human turn waits before recording pass")
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--only", action="append", default=None, help="regex on model id (repeatable)")
     ap.add_argument("-v", "--verbose", action="store_true")

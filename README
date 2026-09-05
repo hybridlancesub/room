@@ -14,6 +14,8 @@ Pure Python 3 stdlib. No framework, no provider baked in. One SQLite file per ro
 
     --only REGEX (repeatable) / --limit N   restrict the roster
     --mock N                                N free, deterministic participants
+    --human "Name / hails from [/ people]"  seat one person; same gates, same actions, replies on stdin
+    --human-timeout SEC                     a human turn that gets no reply in time is recorded as pass
     --alert-every USD                       spend alert cadence (default 50; there is no cap)
     -v                                      print every event as it is appended
 
@@ -79,6 +81,7 @@ room/engine.py     admission, turns, reflection, halt, alerts
 room/prompts.py    what participants are told; room_view()
 room/connector.py  Connector protocol, OpenAI-compatible connector, MockConnector
 room/nous.py       Nous Research roster + credentials via Hermes
+room/human.py      a human seat (terminal connector); reply format in its docstring
 room/__main__.py   operator CLI
 tests.py           invariant tests
 invitations/       invitation texts (gate 1)

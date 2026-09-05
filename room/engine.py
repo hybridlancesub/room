@@ -195,8 +195,10 @@ class Room:
 
         ex = ThreadPoolExecutor(self.parallel)
         futs = {ex.submit(one, p): p for p in members}
+        # a human seat reads from a terminal; its own turn timeout governs it, not the round deadline
+        deadline = self.round_deadline + max([getattr(self.seat_of[p.id][0], "turn_timeout", 0) or 0 for p in members] + [0])
         try:
-            for fut in as_completed(futs, timeout=self.round_deadline):
+            for fut in as_completed(futs, timeout=deadline):
                 p, reply, err, msgs = fut.result()
                 if err:
                     self.emit(p.id, "connector_error", {"phase": "turn", "error": err})
@@ -230,7 +232,8 @@ class Room:
             self.emit(pid, "rejected", {"why": "room is halted by collective consent; only propose/consent/note/withdraw apply until a resume proposal adopts"})
             return
         if a in CONTRIBUTION_KINDS:
-            payload = {"domain": _clean(act.get("domain"), 60), "content": _clean(act.get("content"), 2000)}
+            domain = _clean(act.get("domain"), 60) or (self.state().presences[pid].domain or "")
+            payload = {"domain": domain, "content": _clean(act.get("content"), 2000)}
             if a in ("affirm", "challenge"):
                 payload["target"] = _int(act.get("target"))
                 if payload["target"] is None:
