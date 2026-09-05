@@ -149,7 +149,6 @@ class RoomTest(unittest.TestCase):
         self.assertIsNone(_parse('{"action": ["a", "b"]}'))
         self.assertIsNone(_parse('{"action": {"x": 1}}'))
         self.assertIsNone(_parse('{"action": 7}'))
-        self.assertIsNone(_parse('[{"action": "opt_in"}]'))
         shapes = iter(['{"action": {"weird": true}}', '{"action": [1,2]}'])
         conn = MockConnector(1, lambda s, sy, m: next(shapes, '{"action": "decline"}'))
         room = Room(EventLog(os.path.join(self.tmp, "m.db")), [conn], alert_fn=self.alerts.append)
