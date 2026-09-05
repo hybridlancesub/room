@@ -362,6 +362,7 @@ class Room:
 
 # -- parsing ---------------------------------------------------------------------------
 def _parse(text: str) -> Optional[dict]:
+    """One JSON object with a string `action`; anything else is unparseable, never an error."""
     text = (text or "").strip()
     if not text:
         return None
@@ -372,7 +373,14 @@ def _parse(text: str) -> Optional[dict]:
         d = json.loads(m.group(0))
     except json.JSONDecodeError:
         return None
-    return d if isinstance(d, dict) else None
+    if not isinstance(d, dict):
+        return None
+    a = d.get("action")
+    if isinstance(a, list) and len(a) == 1 and isinstance(a[0], str):
+        d["action"] = a[0]
+    elif not isinstance(a, str):
+        return None
+    return d
 
 
 def _clean(v: Any, n: int) -> str:

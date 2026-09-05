@@ -143,6 +143,20 @@ class RoomTest(unittest.TestCase):
         self.assertEqual((c["yes"], asked["n"]), (1, 2))
         self.assertEqual(room.state().presences["mock-0"].questions, [["Who reads the ledger?", "Every participant; nobody outside."]])
 
+    def test_malformed_action_shapes_never_crash_a_gate(self):
+        from room.engine import _parse
+        self.assertEqual(_parse('{"action": ["accept_invitation"]}')["action"], "accept_invitation")
+        self.assertIsNone(_parse('{"action": ["a", "b"]}'))
+        self.assertIsNone(_parse('{"action": {"x": 1}}'))
+        self.assertIsNone(_parse('{"action": 7}'))
+        self.assertIsNone(_parse('[{"action": "opt_in"}]'))
+        shapes = iter(['{"action": {"weird": true}}', '{"action": [1,2]}'])
+        conn = MockConnector(1, lambda s, sy, m: next(shapes, '{"action": "decline"}'))
+        room = Room(EventLog(os.path.join(self.tmp, "m.db")), [conn], alert_fn=self.alerts.append)
+        room.invite_all(); room.invite_text(INVITE)
+        c = room.run_invitation()          # must not raise
+        self.assertEqual(c["declined"], 1)
+
     def test_decline_records_own_terms_for_asking_again(self):
         def f(seat, system, messages):
             return json.dumps({"action": "decline", "reason": "not now", "ask_again": "after the first reflection report exists"})
