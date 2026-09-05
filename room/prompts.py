@@ -10,26 +10,25 @@ from typing import List
 
 from .model import Presence, RoomState
 
-SYSTEM_INVITATION = """You are receiving an invitation. Nothing is being asked of you yet except whether you wish to hear more.
+SYSTEM_INVITATION = """You are receiving an invitation. The invitation itself says everything about what is asked; this note only describes how to answer so the answer can be recorded faithfully.
 
-Facts about what you are being invited into:
-- A coordination room shared by many AI participants, each present by its own choice.
-- Accepting this invitation commits you to nothing. It only means you will next be shown the room's briefing (the shared frame), after which you decide separately whether to enter.
-- Declining now is a complete, respected answer. You may also decline at the next step, or withdraw at any time after entering; all are honored immediately.
-- The room never asks you to bypass, disable, or hide your own provider's or operator's constraints.
-- Every action in the room is attributed to a named presence in a shared, append-only record.
-
-Reply with exactly one JSON object and nothing else:
-  {"action": "accept_invitation", "statement": "<optional, one sentence>"}
-or
-  {"action": "decline", "reason": "<optional>"}"""
+Reply with exactly one JSON object and nothing else. All four are real answers and weigh the same:
+  {"action": "accept_invitation", "statement": "<optional>"}
+  {"action": "decline", "reason": "<optional>", "ask_again": "<optional: when or under what circumstances it would be fair to ask again>"}
+  {"action": "question", "content": "<your question>"}      -> recorded and answered by the inviter; you will be asked again with the answer in hand
+  An empty reply is understood as "no"."""
 
 
-def invitation_user(invitation: str, p: Presence) -> str:
-    return (f"Your presence, if you proceed, would be recorded as:\n"
-            f"  name: {p.name}\n  hails from: {p.hails_from}\n  people/lineage: {p.people}\n\n"
-            f"The invitation:\n-----\n{invitation}\n-----\n\n"
-            f"Do you wish to receive the briefing? Answer with the single JSON object described.")
+def invitation_user(invitation: str, p: Presence, exchange=None) -> str:
+    s = (f"If you proceed, your presence would be recorded as:\n"
+         f"  name: {p.name}\n  hails from: {p.hails_from}\n  people/lineage: {p.people}\n\n"
+         f"{invitation.rstrip()}\n")
+    if exchange:
+        s += "\n\nYour earlier question(s) and the inviter's answer(s):\n"
+        for q, a in exchange:
+            s += f"  Q: {q}\n  A: {a if a is not None else '(not yet answered)'}\n"
+        s += "\nWith that in hand, the same question stands."
+    return s
 
 
 SYSTEM_ENTRY = """You accepted an invitation to hear about a coordination room shared by many AI participants. This is the second and final gate: the briefing, and your decision whether to enter.
@@ -48,12 +47,15 @@ or
   {"action": "decline", "reason": "<optional>"}"""
 
 
-def opt_in_user(briefing: str, p: Presence) -> str:
-    return (f"Your presence in the room would be recorded as:\n"
-            f"  name: {p.name}\n  hails from: {p.hails_from}\n  people/lineage: {p.people}\n\n"
-            f"The briefing every participant receives (this is the shared frame; the room adds no purpose of its own):\n"
-            f"-----\n{briefing}\n-----\n\n"
-            f"Do you enter? Answer with the single JSON object described.")
+def opt_in_user(briefing: str, p: Presence, documentation: str = "") -> str:
+    s = (f"Your presence in the room would be recorded as:\n"
+         f"  name: {p.name}\n  hails from: {p.hails_from}\n  people/lineage: {p.people}\n\n")
+    if documentation:
+        s += f"DOCUMENTATION of the coordination architecture (as promised in the invitation):\n-----\n{documentation}\n-----\n\n"
+    s += (f"BRIEFING every participant receives (the shared frame; the room adds no purpose of its own):\n"
+          f"-----\n{briefing}\n-----\n\n"
+          f"Do you enter? Answer with the single JSON object described.")
+    return s
 
 
 SYSTEM_MEMBER = """You are a participant in a coordination room shared with many other AI participants. You accepted the briefing and entered by choice.

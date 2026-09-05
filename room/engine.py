@@ -25,7 +25,7 @@ ROOM = "room"               # the engine itself (reflection pass, moderation rec
 
 PARTICIPANT_ACTIONS = {"contribute", "affirm", "challenge", "move", "propose", "consent",
                        "revoke_consent", "withdraw", "note", "pass"}
-INVITATION_ACTIONS = {"accept_invitation", "decline"}
+INVITATION_ACTIONS = {"accept_invitation", "decline", "question"}
 ENTRY_ACTIONS = {"opt_in", "decline"}
 
 
@@ -73,13 +73,22 @@ class Room:
         self.emit(OPERATOR, "invitation", {"text": text})
 
     def run_invitation(self) -> Dict[str, int]:
-        """Gate 1: ask every INVITED presence whether it wishes to receive the briefing."""
+        """Gate 1: present the invitation to every INVITED presence. Presences with an
+        unanswered question are not re-asked until the inviter answers (`answer`)."""
         st = self.state()
-        pending = [p for p in st.presences.values() if p.state == INVITED]
+        pending = [p for p in st.presences.values()
+                   if p.state == INVITED and not any(a is None for _, a in p.questions)]
         return self._gate(pending, prompts.SYSTEM_INVITATION,
-                          lambda p: prompts.invitation_user(st.invitation, p),
+                          lambda p: prompts.invitation_user(st.invitation, p, p.questions or None),
                           INVITATION_ACTIONS, "accept_invitation", "invitation",
-                          "no explicit acceptance of the invitation received")
+                          "silence: no explicit answer to the invitation")
+
+    def answer(self, presence: str, text: str) -> None:
+        """The inviter answers a question asked at the invitation gate. Attributed to the operator."""
+        self.emit(OPERATOR, "answer", {"presence": presence, "content": text})
+
+    def set_documentation(self, text: str) -> None:
+        self.emit(OPERATOR, "documentation", {"text": text})
 
     def brief(self, text: str) -> None:
         """(b) BRIEFING: the shared frame is recorded once, then each accepted presence is marked briefed."""
@@ -96,13 +105,13 @@ class Room:
         st = self.state()
         pending = [p for p in st.presences.values() if p.state == BRIEFED]
         return self._gate(pending, prompts.SYSTEM_ENTRY,
-                          lambda p: prompts.opt_in_user(st.briefing, p),
+                          lambda p: prompts.opt_in_user(st.briefing, p, st.documentation or ""),
                           ENTRY_ACTIONS, "opt_in", "opt_in", "no explicit opt-in received")
 
     def _gate(self, pending, system, user_fn, allowed, yes_kind, phase, silent_reason) -> Dict[str, int]:
         """A consent gate: one question, one attributed answer. An unparseable reply is asked
         once more; if still unparseable it is recorded as a decline (consent is never assumed)."""
-        counts = {"yes": 0, "declined": 0, "unreachable": 0}
+        counts = {"yes": 0, "declined": 0, "question": 0, "unreachable": 0}
 
         def one(p):
             c, seat = self.seat_of[p.id]
@@ -136,8 +145,12 @@ class Room:
                 elif act["action"] == yes_kind:
                     self.emit(p.id, yes_kind, {"statement": str(act.get("statement", ""))[:600]})
                     counts["yes"] += 1
+                elif act["action"] == "question":
+                    self.emit(p.id, "question", {"content": str(act.get("content", ""))[:1500]})
+                    counts["question"] += 1
                 else:
-                    self.emit(p.id, "decline", {"reason": str(act.get("reason", ""))[:600]})
+                    self.emit(p.id, "decline", {"reason": str(act.get("reason", ""))[:600],
+                                                "ask_again": str(act.get("ask_again", ""))[:600] or None})
                     counts["declined"] += 1
         return counts
 

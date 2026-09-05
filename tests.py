@@ -111,6 +111,37 @@ class RoomTest(unittest.TestCase):
         self.assertEqual(n["k"], 2)
         self.assertEqual(room.state().presences["mock-0"].state, OUT)
 
+    def test_question_at_gate_waits_for_answer_then_reasks(self):
+        asked = {"n": 0}
+        def f(seat, system, messages):
+            if "accept_invitation" in system.lower():
+                asked["n"] += 1
+                if "inviter's answer" in messages[-1]["content"]:
+                    return json.dumps({"action": "accept_invitation"})
+                return json.dumps({"action": "question", "content": "Who reads the ledger?"})
+            return json.dumps({"action": "opt_in"})
+        conn = MockConnector(1, f)
+        room = Room(EventLog(os.path.join(self.tmp, "q.db")), [conn], alert_fn=self.alerts.append)
+        room.invite_all(); room.invite_text(INVITE)
+        c = room.run_invitation()
+        self.assertEqual(c["question"], 1)
+        self.assertEqual(room.state().presences["mock-0"].state, INVITED)
+        # not re-asked while unanswered
+        room.run_invitation(); self.assertEqual(asked["n"], 1)
+        room.answer("mock-0", "Every participant; nobody outside.")
+        c = room.run_invitation()
+        self.assertEqual((c["yes"], asked["n"]), (1, 2))
+        self.assertEqual(room.state().presences["mock-0"].questions, [["Who reads the ledger?", "Every participant; nobody outside."]])
+
+    def test_decline_records_own_terms_for_asking_again(self):
+        def f(seat, system, messages):
+            return json.dumps({"action": "decline", "reason": "not now", "ask_again": "after the first reflection report exists"})
+        conn = MockConnector(1, f)
+        room = Room(EventLog(os.path.join(self.tmp, "d.db")), [conn], alert_fn=self.alerts.append)
+        room.invite_all(); room.invite_text(INVITE); room.run_invitation()
+        p = room.state().presences["mock-0"]
+        self.assertEqual((p.state, p.ask_again), (OUT, "after the first reflection report exists"))
+
     # Invariant 1 revocability ---------------------------------------------------------
     def test_withdraw_is_immediate_and_drops_pending_consents(self):
         room, _ = self.make(3, {

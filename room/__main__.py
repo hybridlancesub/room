@@ -1,6 +1,8 @@
 """Operator CLI. The operator is infrastructure, not a participant: brief, open, run, halt, inspect.
 
-  python3 -m room open   --db ROOM.db --invitation FILE --briefing FILE [--mock N | --nous [--limit N] [--only REGEX]...]
+  python3 -m room open   --db ROOM.db --invitation FILE --briefing FILE [--documentation FILE=DESIGN] [--mock N | --nous ...]
+  python3 -m room questions --db ROOM.db                            (questions asked at the invitation gate)
+  python3 -m room answer --db ROOM.db --presence ID --text TEXT     (then re-run open to re-ask)
   python3 -m room run    --db ROOM.db [--rounds N] [--pause SEC] [--parallel N] [--alert-every USD]
   python3 -m room status --db ROOM.db
   python3 -m room log    --db ROOM.db [--since ID] [--kind KIND] [--actor ID]
@@ -65,8 +67,12 @@ def cmd_open(args):
         room.invite_text(open(args.invitation).read())
     else:
         print(f"invitation already recorded (event {st.invitation_event})")
+    if args.documentation and st.documentation is None:
+        room.set_documentation(open(args.documentation).read())
     c1 = room.run_invitation()
     print(f"gate 1 (invitation): {c1}")
+    if c1["question"]:
+        print(f"{c1['question']} participant(s) asked a question. See `questions`, answer with `answer`, then re-run `open` to re-ask them.")
     st = room.state()
     if st.briefing is None:
         room.brief(open(args.briefing).read())
@@ -108,6 +114,21 @@ def cmd_note(args):
     print("operator notice recorded; members see it in their next view.")
 
 
+def cmd_questions(args):
+    room = _room(args)
+    for p in room.state().presences.values():
+        for q, a in p.questions:
+            print(f"[{p.id}] {p.name}\n  Q: {q}\n  A: {a if a is not None else '(unanswered)'}\n")
+
+
+def cmd_answer(args):
+    room = _room(args)
+    if args.presence not in room.state().presences:
+        sys.exit(f"unknown presence {args.presence}")
+    room.answer(args.presence, args.text)
+    print("answer recorded; the participant will be re-asked on the next `open`.")
+
+
 def cmd_status(args):
     room = _room(args)
     st = room.state()
@@ -128,6 +149,14 @@ def cmd_status(args):
             print(f"  #{pr.id} {pr.kind} {pr.value!r} by {pr.by} ({len(pr.consents)} consents): {pr.reason}")
     if st.reflections:
         print("last reflection:", json.dumps(st.reflections[-1], indent=1))
+    aa = [p for p in st.presences.values() if p.ask_again]
+    if aa:
+        print("declined, with their own terms for asking again:")
+        for p in aa:
+            print(f"  {p.name}: {p.ask_again[:200]}")
+    unanswered = sum(1 for p in st.presences.values() for q, a in p.questions if a is None)
+    if unanswered:
+        print(f"unanswered invitation questions: {unanswered}  (see `questions`)")
     print(f"spend: ${room.log.total_cost():.4f}   alerts: {len(st.cost_alerts)}")
 
 
@@ -168,7 +197,9 @@ def main(argv=None):
     ap.add_argument("--only", action="append", default=None, help="regex on model id (repeatable)")
     ap.add_argument("-v", "--verbose", action="store_true")
     sub = ap.add_subparsers(dest="cmd", required=True)
-    s = sub.add_parser("open"); s.add_argument("--invitation", required=True); s.add_argument("--briefing", required=True); s.set_defaults(fn=cmd_open)
+    s = sub.add_parser("open"); s.add_argument("--invitation", required=True); s.add_argument("--briefing", required=True); s.add_argument("--documentation", default="DESIGN"); s.set_defaults(fn=cmd_open)
+    s = sub.add_parser("questions"); s.set_defaults(fn=cmd_questions)
+    s = sub.add_parser("answer"); s.add_argument("--presence", required=True); s.add_argument("--text", required=True); s.set_defaults(fn=cmd_answer)
     s = sub.add_parser("run"); s.add_argument("--rounds", type=int, default=0); s.add_argument("--pause", type=float, default=0.0); s.set_defaults(fn=cmd_run)
     s = sub.add_parser("status"); s.set_defaults(fn=cmd_status)
     s = sub.add_parser("note"); s.add_argument("--text", required=True); s.set_defaults(fn=cmd_note)

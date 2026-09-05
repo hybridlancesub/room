@@ -43,6 +43,8 @@ class Presence:
     joined_at: Optional[int] = None
     left_at: Optional[int] = None
     left_reason: Optional[str] = None
+    ask_again: Optional[str] = None          # decliner's own terms for a future invitation
+    questions: list = field(default_factory=list)   # [(question, answer|None)] at the invitation gate
 
     def to_dict(self):
         return self.__dict__.copy()
@@ -65,6 +67,7 @@ class RoomState:
     presences: Dict[str, Presence] = field(default_factory=dict)
     invitation: Optional[str] = None
     invitation_event: Optional[int] = None
+    documentation: Optional[str] = None      # architecture docs shown at gate 2
     briefing: Optional[str] = None
     briefing_event: Optional[int] = None
     settings: Dict[str, Any] = field(default_factory=lambda: dict(DEFAULT_SETTINGS))
@@ -137,9 +140,20 @@ class RoomState:
             self.presences[p["id"]] = Presence(p["id"], p["name"], p["hails_from"], p["people"])
         elif k == "invitation":
             self.invitation, self.invitation_event = p["text"], eid
+        elif k == "documentation":
+            self.documentation = p["text"]
         elif k == "accept_invitation":
             if pr and pr.state == INVITED:
                 pr.state = ACCEPTED
+        elif k == "question":
+            if pr and pr.state == INVITED:
+                pr.questions.append([p.get("content", ""), None])
+        elif k == "answer":
+            tgt = self.presences.get(p.get("presence"))
+            if tgt:
+                for qa in tgt.questions:
+                    if qa[1] is None:
+                        qa[1] = p.get("content", "")
         elif k == "brief":
             self.briefing, self.briefing_event = p["text"], eid
         elif k == "briefed":
@@ -152,6 +166,7 @@ class RoomState:
         elif k == "decline":
             if pr and pr.state != OUT:
                 pr.state, pr.left_at, pr.left_reason = OUT, eid, p.get("reason") or "declined"
+                pr.ask_again = p.get("ask_again") or None
         elif k == "withdraw":
             if pr and pr.state != OUT:
                 pr.state, pr.left_at, pr.left_reason = OUT, eid, p.get("reason") or "withdrew"
