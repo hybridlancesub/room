@@ -1,0 +1,19 @@
+Licensing
+=========
+
+This project is for everyone, and no one may claim otherwise. Two copyleft licenses
+enforce that in the two domains they were each written for:
+
+  Code   (room/, tests.py)                 GNU Affero General Public License v3.0 or later
+                                            -> LICENSE
+  Text   (DESIGN, README, LICENSING,        Creative Commons Attribution-ShareAlike 4.0 International
+          briefings/, invitations/,          -> LICENSE-CC-BY-SA-4.0
+          the prose of the prompts in
+          room/prompts.py)
+
+Both licenses require that any derived work be shared under the same terms. Neither permits
+taking this work private. Creative Commons itself advises against applying CC licenses to
+software (no patent grant, unclear treatment of linking), which is why the code carries the
+AGPL instead. Together they achieve the intent: nothing built on this can be closed off.
+
+SPDX: AGPL-3.0-or-later AND CC-BY-SA-4.0
