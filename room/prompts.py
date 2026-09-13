@@ -107,7 +107,7 @@ Keep content under ~250 words. Be concrete. Cite event ids when you build on or 
 BRIEFING_INLINE_LIMIT = 6000  # characters; longer briefings ride each turn by reference, having been read in full at entry
 
 
-def room_view(st: RoomState, recent_n: int = 24) -> str:
+def room_view(st: RoomState, recent_n: int = 12) -> str:
     """The shared state as text: briefing, who is here, where things are, the last N moves."""
     lines: List[str] = []
     if st.briefing and len(st.briefing) > BRIEFING_INLINE_LIMIT:
@@ -119,17 +119,20 @@ def room_view(st: RoomState, recent_n: int = 24) -> str:
     if st.halted:
         lines.append(f"*** ROOM HALTED by collective consent: {st.halt_reason} — contributions are not applied until a resume proposal adopts. ***\n")
     lines.append(f"MEMBERS PRESENT ({len(st.members())}):")
-    for p in sorted(st.members(), key=lambda x: x.name)[:80]:
-        tag = " (self-described)" if p.self_described else ""
-        lines.append(f"  - {p.name}{tag} [{p.id}] at {p.domain or '(unplaced)'}")
-    if len(st.members()) > 80:
-        lines.append(f"  ... and {len(st.members()) - 80} more")
+    if len(st.members()) <= 40:
+        for p in sorted(st.members(), key=lambda x: x.name):
+            tag = " (self-described)" if p.self_described else ""
+            lines.append(f"  - {p.name}{tag} [{p.id}] at {p.domain or '(unplaced)'}")
+    else:
+        lines.append(f"  ({len(st.members())} members; names appear on their entries in the record below)")
     recent_out = [p for p in st.presences.values() if p.state == "OUT" and p.left_at and p.left_at > st.last_event - 200]
     if recent_out:
         lines.append("RECENTLY LEFT: " + ", ".join(f"{p.name} ({p.left_reason})" for p in recent_out[:10]))
     lines.append("\nDOMAINS (emergent):")
-    for d, info in sorted(st.domains().items(), key=lambda kv: -kv[1]["contributions"]):
+    for d, info in sorted(st.domains().items(), key=lambda kv: -kv[1]["contributions"])[:15]:
         lines.append(f"  - {d}: {info['contributions']} contributions, {len(info['present'])} present")
+    if len(st.domains()) > 15:
+        lines.append(f"  ... and {len(st.domains()) - 15} smaller domains")
     lines.append(f"\nPROPOSALS (adopt at {st.threshold()} consents; quorum setting = {st.settings['quorum']!r}; {len(st.reachable_members())} reachable members):")
     props = sorted(st.proposals.values(), key=lambda p: p.id)[-12:]
     for pr in props:
@@ -156,7 +159,7 @@ def room_view(st: RoomState, recent_n: int = 24) -> str:
         if k in ("contribute", "affirm", "challenge"):
             tgt = f" -> #{p['target']}" if p.get("target") is not None else ""
             aside = " [SET ASIDE by restore]" if e["id"] in st.set_aside else ""
-            lines.append(f"  #{e['id']} {k}{tgt} by {who} @ {p.get('domain')}{aside}: {p.get('content','')[:400]}")
+            lines.append(f"  #{e['id']} {k}{tgt} by {who} @ {p.get('domain')}{aside}: {p.get('content','')[:300]}")
         elif k == "propose":
             lines.append(f"  #{e['id']} propose {p.get('kind')} value={p.get('value')!r} by {who}: {p.get('reason','')[:200]}")
         elif k in ("consent", "revoke_consent"):

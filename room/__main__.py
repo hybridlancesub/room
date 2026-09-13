@@ -50,7 +50,7 @@ def _connectors(args):
 def _room(args, connectors=None):
     log = EventLog(args.db)
     room = Room(log, connectors or [], alert_every_usd=args.alert_every, parallel=args.parallel,
-                round_deadline=args.round_deadline,
+                round_deadline=args.round_deadline, seats_per_round=args.seats_per_round,
                 on_event=(lambda ev: _fmt(ev) and print(_fmt(ev), flush=True)) if getattr(args, "verbose", False) else None)
     return room
 
@@ -115,6 +115,7 @@ def cmd_run(args):
     cs = _connectors(args)
     room = _room(args, cs)
     room.alert = _print_alert
+    room.budget_hint = args.budget
     room.invite_all()  # re-binds seats to existing presences; no new invites for known ids
     st = room.state()
     if st.halted:
@@ -219,6 +220,8 @@ def main(argv=None):
     ap.add_argument("--alert-every", type=float, default=50.0, help="USD; alert each time spend crosses a multiple")
     ap.add_argument("--parallel", type=int, default=8)
     ap.add_argument("--round-deadline", type=float, default=300.0, help="seconds to wait for the slowest seat each round")
+    ap.add_argument("--seats-per-round", type=int, default=0, help="rotate: N seats take a turn each round (everyone before anyone repeats); 0 = all")
+    ap.add_argument("--budget", type=float, default=0.0, help="total USD you intend to spend on this room, for the on-screen runway (not a cap)")
     ap.add_argument("--mock", type=int, default=0)
     ap.add_argument("--nous", action="store_true")
     ap.add_argument("--human", help='seat one human participant: "Name / hails from [/ people]"; answers gates and turns on stdin')

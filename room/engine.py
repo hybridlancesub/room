@@ -35,8 +35,11 @@ class Room:
     def __init__(self, log: EventLog, connectors: List[Connector], *,
                  alert_every_usd: float = 50.0, alert_fn: Callable[[str], None] = print,
                  parallel: int = 8, on_event: Optional[Callable[[dict], None]] = None,
-                 round_deadline: float = 300.0):
+                 round_deadline: float = 300.0, seats_per_round: int = 0):
         self.round_deadline = round_deadline   # seconds a round waits for its slowest seat
+        self.seats_per_round = seats_per_round  # 0 = everyone every round; else a rotating subset
+        self.budget_hint: float = 0.0           # operator's stated total budget, for the on-screen runway
+        self._rotation: List[str] = []
         self.log = log
         self.connectors = connectors
         self.seat_of: Dict[str, tuple] = {}      # presence id -> (connector, seat)
@@ -209,13 +212,15 @@ class Room:
         members = st.reachable_members()
         if not members:
             return 0
+        if self.seats_per_round and len(members) > self.seats_per_round:
+            members = self._pick_rotation(members)
         view = prompts.room_view(st)
         taken = 0
 
         def one(p):
             c, seat = self.seat_of[p.id]
             hist = self.memory.get(p.id, [])
-            msgs = hist[-6:] + [{"role": "user", "content": prompts.turn_user(view, p, st)}]
+            msgs = hist[-2:] + [{"role": "user", "content": prompts.turn_user(view, p, st)}]
             try:
                 reply = c.ask(seat, prompts.SYSTEM_MEMBER, msgs)
             except ConnectorError as e:
@@ -234,7 +239,9 @@ class Room:
                     self.emit(p.id, "connector_error", {"phase": "turn", "error": err})
                     continue
                 self.emit(p.id, "connector_ok", {})
-                self.memory[p.id] = (msgs + [{"role": "assistant", "content": reply.text}])[-8:]
+                # keep only the participant's own last reply as memory (the record carries the rest)
+                self.memory[p.id] = [{"role": "user", "content": "(your previous turn's view, omitted)"},
+                                     {"role": "assistant", "content": reply.text}]
                 self._apply_action(p.id, reply.text)
                 taken += 1
         except TimeoutError:
@@ -245,6 +252,21 @@ class Room:
         finally:
             ex.shutdown(wait=False, cancel_futures=True)  # stragglers finish in the background; their replies are dropped
         return taken
+
+    def _pick_rotation(self, members):
+        """Everyone takes a turn before anyone takes a second; order within a cycle is random.
+        Human seats are always included so a person is never rotated out of their own room."""
+        import random
+        ids = {p.id: p for p in members}
+        humans = [p for p in members if self.seat_of[p.id][1].model == "human"]
+        n = max(1, self.seats_per_round - len(humans))
+        self._rotation = [i for i in self._rotation if i in ids]
+        if len(self._rotation) < n:
+            fresh = [i for i in ids if i not in self._rotation and ids[i] not in humans]
+            random.shuffle(fresh)
+            self._rotation += fresh
+        chosen, self._rotation = self._rotation[:n], self._rotation[n:]
+        return humans + [ids[i] for i in chosen]
 
     def _apply_action(self, pid: str, text: str) -> None:
         act = _parse(text)
@@ -352,8 +374,17 @@ class Room:
             if not st.reachable_members():
                 self.alert("no reachable members remain; stopping loop")
                 break
+            before = self.log.total_cost()
             taken = self.round()
             r += 1
+            after = self.log.total_cost()
+            cost = after - before
+            if self.budget_hint:
+                left = self.budget_hint - after
+                msg = f"round {r}: {taken} turns, ${cost:.2f}; total ${after:.2f}; ~${left:.2f} left = ~{int(left / cost) if cost > 0 else '∞'} more rounds like this"
+            else:
+                msg = f"round {r}: {taken} turns, ${cost:.2f}; total ${after:.2f}"
+            self.alert(msg)
             if self.log.last_id() - last_reflect >= self.state().settings["cadence"]:
                 rep = self.reflect()
                 last_reflect = self.log.last_id()
