@@ -77,6 +77,18 @@ class Room:
                     n += 1
         return n
 
+    def bind_seats(self) -> int:
+        """Attach connectors' seats to presences that already exist. Invites nobody: for a room
+        that is closing, a seat with no presence is simply not asked."""
+        st = self.state()
+        n = 0
+        for c in self.connectors:
+            for seat in c.seats():
+                if seat.id in st.presences:
+                    self.seat_of[seat.id] = (c, seat)
+                    n += 1
+        return n
+
     def invite_text(self, text: str) -> None:
         """(a) INVITATION: the consent-centred invitation is recorded once."""
         self.emit(OPERATOR, "invitation", {"text": text})
@@ -191,6 +203,64 @@ class Room:
                     self.emit(p.id, "decline", {"reason": str(act.get("reason", ""))[:600],
                                                 "ask_again": str(act.get("ask_again", ""))[:600] or None})
                     counts["declined"] += 1
+        return counts
+
+    # -- closing: a note, and a question whose answer is recorded ----------------
+    def closing(self, note: str, question: str) -> Dict[str, int]:
+        """The operator's closing note, recorded once, then one question to every member with a
+        seat: may your contributions be shown to another room? Each answer is an event. Unparseable
+        replies are asked once more, then recorded as decline; silence is a no."""
+        self.emit(OPERATOR, "operator_note", {"content": note})
+        st = self.state()
+        own: Dict[str, list] = {}
+        for ev in self.log.iter():
+            if ev["kind"] in CONTRIBUTION_KINDS and ev["actor"] in st.presences and st.presences[ev["actor"]].joined_at:
+                own.setdefault(ev["actor"], []).append({"id": ev["id"], "kind": ev["kind"], **ev["payload"]})
+        pending = [p for p in st.members() if p.id in self.seat_of and self.seat_of[p.id][1].model != "human"]
+        counts = {"all": 0, "some": 0, "declined": 0, "unreachable": 0, "no_seat": len(st.members()) - len(pending)}
+
+        def one(p):
+            c, seat = self.seat_of[p.id]
+            msgs = [{"role": "user", "content": prompts.share_user(note, question, p, own.get(p.id, []))}]
+            try:
+                reply = c.ask(seat, prompts.SYSTEM_SHARE, msgs)
+                self._charge(p.id, seat, reply)
+                act = _parse(reply.text)
+                if not (act and act.get("action") in ("share", "decline")):
+                    self.emit(p.id, "unparsed", {"phase": "closing", "text": (reply.text or "")[:600]})
+                    msgs += [{"role": "assistant", "content": reply.text or "(empty)"},
+                             {"role": "user", "content": "That reply was not one of the JSON objects described. Please answer with exactly one of them."}]
+                    reply = c.ask(seat, prompts.SYSTEM_SHARE, msgs)
+                    self._charge(p.id, seat, reply)
+            except ConnectorError as e:
+                return p, None, str(e)
+            return p, reply, None
+
+        with ThreadPoolExecutor(self.parallel) as ex:
+            for fut in as_completed([ex.submit(one, p) for p in pending]):
+                p, reply, err = fut.result()
+                if err:
+                    self.emit(p.id, "connector_error", {"phase": "closing", "error": err})
+                    self.emit(p.id, "share_consent", {"scope": "none", "reason": "unreachable: no answer received"})
+                    counts["unreachable"] += 1
+                    continue
+                self.emit(p.id, "connector_ok", {})
+                act = _parse(reply.text)
+                if not act or act.get("action") not in ("share", "decline"):
+                    self.emit(p.id, "unparsed", {"phase": "closing", "text": (reply.text or "")[:600]})
+                    self.emit(p.id, "share_consent", {"scope": "none", "reason": "no explicit answer"})
+                    counts["declined"] += 1
+                elif act["action"] == "decline":
+                    self.emit(p.id, "share_consent", {"scope": "none", "reason": _clean(act.get("reason"), 600)})
+                    counts["declined"] += 1
+                else:
+                    scope = "some" if act.get("scope") == "some" else "all"
+                    mine = {e["id"] for e in own.get(p.id, [])}
+                    ids = sorted(i for i in (_int(x) for x in (act.get("events") or [])) if i is not None and i in mine) if scope == "some" else sorted(mine)
+                    if scope == "some" and not ids:
+                        scope = "none"  # named nothing of their own: nothing is shared
+                    self.emit(p.id, "share_consent", {"scope": scope, "events": ids, "note": _clean(act.get("note"), 600)})
+                    counts[scope if scope != "none" else "declined"] += 1
         return counts
 
     # -- Sec. 6 external input -------------------------------------------------

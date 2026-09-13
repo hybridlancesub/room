@@ -1,0 +1,49 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<html lang="en"><head><meta charset="utf-8"><title>Firmament — probe</title>
+<style>body{background:#050508;color:#c8d0e4;font:14px/1.6 monospace;padding:2rem;max-width:70ch}b{color:#fff}.bad{color:#f88}.ok{color:#8f8}</style></head>
+<body>
+<h3>Firmament probe</h3>
+<p>This page uses no WebGL. It reports what your browser can do and whether the record is reachable.</p>
+<pre id="out">running…</pre>
+<script type="module">
+const out = document.getElementById('out');
+const lines = [];
+const say = (k, v, cls='') => { lines.push(`${k.padEnd(22)} ${cls ? `<span class="${cls}">${v}</span>` : v}`); out.innerHTML = lines.join('\n'); };
+say('browser', navigator.userAgent);
+say('cores / memory', `${navigator.hardwareConcurrency ?? '?'} / ${navigator.deviceMemory ?? '?'} GB`);
+say('viewport', `${innerWidth}x${innerHeight} @ dpr ${devicePixelRatio}`);
+for (const kind of ['webgl2', 'webgl']) {
+  const c = document.createElement('canvas');
+  const gl = c.getContext(kind, { failIfMajorPerformanceCaveat: false });
+  if (!gl) { say(kind, 'NOT AVAILABLE', 'bad'); continue; }
+  const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+  const renderer = dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER);
+  say(kind, `ok — ${renderer}`, 'ok');
+  say(`${kind} max texture`, gl.getParameter(gl.MAX_TEXTURE_SIZE));
+  say(`${kind} float textures`, kind === 'webgl2' ? 'built in' : (gl.getExtension('OES_texture_float') ? 'yes' : 'NO'), kind === 'webgl2' || gl.getExtension('OES_texture_float') ? 'ok' : 'bad');
+  const caveat = document.createElement('canvas').getContext(kind, { failIfMajorPerformanceCaveat: true });
+  say(`${kind} hw accelerated`, caveat ? 'yes' : 'NO (software fallback or blocked)', caveat ? 'ok' : 'bad');
+}
+try {
+  const t0 = performance.now();
+  const r = await fetch('./state.json', { cache: 'no-store' });
+  const txt = await r.text();
+  const st = JSON.parse(txt);
+  say('state.json', `ok — ${(txt.length/1024|0)} KB in ${(performance.now()-t0)|0} ms; ${st.contributions.length} contributions, ${st.domains.length} domains, last event ${st.last_event}`, 'ok');
+} catch (e) { say('state.json', 'FAILED: ' + e.message, 'bad'); }
+try {
+  const t0 = performance.now();
+  await import('./vendor/three/three.module.min.js');
+  say('three.js module', `ok — loaded in ${(performance.now()-t0)|0} ms`, 'ok');
+} catch (e) { say('three.js module', 'FAILED: ' + e.message, 'bad'); }
+try {
+  const t0 = performance.now();
+  const { substrateFromRecord } = await import('./src/substrate/record.js');
+  const st = await (await fetch('./state.json', { cache: 'no-store' })).json();
+  const d = substrateFromRecord(st);
+  say('record → substrate', `ok — ${d.domains.length} domains in ${(performance.now()-t0)|0} ms`, 'ok');
+} catch (e) { say('record → substrate', 'FAILED: ' + (e.stack || e.message), 'bad'); }
+window.addEventListener('error', (e) => say('page error', e.message, 'bad'));
+say('', '\nIf every line above is green and the main page is still black, tell Hermes the numbers here.');
+</script></body></html>

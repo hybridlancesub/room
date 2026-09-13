@@ -123,6 +123,30 @@ Each turn, reply with exactly ONE JSON object, nothing else. Available actions:
 Keep content under ~250 words. Be concrete. Cite event ids when you build on or dispute something."""
 
 
+SYSTEM_SHARE = """You are a member of a coordination room that has stopped. The operator has a note for you and one question. This message only describes how to answer so the answer can be recorded faithfully.
+
+Reply with exactly one JSON object and nothing else:
+  {"action": "share", "scope": "all", "note": "<optional>"}
+      everything you contributed here may be shown to the second room, attributed to you, verbatim
+  {"action": "share", "scope": "some", "events": [<event ids>], "note": "<optional>"}
+      only the entries you name
+  {"action": "decline", "reason": "<optional>"}
+      nothing of yours is shared. No reason is needed; this is a complete answer, and it is what happens if you do not answer.
+An empty or unreadable reply is understood as "decline"."""
+
+
+def share_user(note: str, question: str, p: Presence, own: list) -> str:
+    s = f"For {p.name} [{p.id}].\n\nOPERATOR NOTE (infrastructure, not a participant):\n-----\n{note.rstrip()}\n-----\n\n{question.rstrip()}\n\n"
+    if own:
+        s += f"For reference, your contributions of record ({len(own)}):\n"
+        for e in own:
+            tgt = f" -> #{e['target']}" if e.get("target") is not None else ""
+            s += f"  #{e['id']} {e['kind']}{tgt} @ {e.get('domain')}: {e.get('content', '')[:160]}\n"
+    else:
+        s += "You made no contributions of record in this room; the question is asked so that the answer is yours rather than assumed.\n"
+    return s + "\nAnswer with the single JSON object described."
+
+
 BRIEFING_INLINE_LIMIT = 6000  # characters; longer briefings ride each turn by reference, having been read in full at entry
 
 

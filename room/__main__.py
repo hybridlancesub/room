@@ -141,6 +141,16 @@ def cmd_run(args):
     print(f"loop ended. events={room.log.last_id()} spend=${room.log.total_cost():.4f}")
 
 
+def cmd_close(args):
+    cs = _connectors(args)
+    room = _room(args, cs)
+    room.alert = _print_alert
+    print(f"seats bound to existing presences: {room.bind_seats()} (no one is invited by closing)")
+    before = room.log.total_cost()
+    c = room.closing(open(args.note).read(), open(args.question).read())
+    print(f"closing: {c}   spent: ${room.log.total_cost() - before:.4f}")
+
+
 def cmd_note(args):
     room = _room(args)
     room.emit("operator", "operator_note", {"content": args.text})
@@ -279,6 +289,7 @@ def main(argv=None):
     s = sub.add_parser("answer"); s.add_argument("--presence", required=True); s.add_argument("--text", required=True); s.set_defaults(fn=cmd_answer)
     s = sub.add_parser("run"); s.add_argument("--rounds", type=int, default=0); s.add_argument("--pause", type=float, default=0.0); s.set_defaults(fn=cmd_run)
     s = sub.add_parser("status"); s.set_defaults(fn=cmd_status)
+    s = sub.add_parser("close"); s.add_argument("--note", required=True); s.add_argument("--question", required=True); s.set_defaults(fn=cmd_close)
     s = sub.add_parser("note"); s.add_argument("--text", required=True); s.set_defaults(fn=cmd_note)
     s = sub.add_parser("log"); s.add_argument("--since", type=int, default=0); s.add_argument("--kind"); s.add_argument("--actor"); s.add_argument("--full", action="store_true"); s.set_defaults(fn=cmd_log)
     s = sub.add_parser("cost"); s.set_defaults(fn=cmd_cost)

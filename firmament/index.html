@@ -145,6 +145,13 @@
   #reader-meta { font-size: 0.6rem; letter-spacing: 0.12em; color: rgba(150, 162, 190, 0.55); margin-bottom: 0.9rem; }
   #reader-body { white-space: pre-wrap; }
 
+  #bootlog {
+    position: fixed; left: 2vw; top: 2vh; z-index: 4;
+    font: 0.7rem/1.7 "Cascadia Code", Consolas, monospace;
+    color: rgba(150, 160, 185, 0.7); white-space: pre-wrap; display: none;
+  }
+  #bootlog.visible { display: block; }
+
   @media (prefers-reduced-motion: reduce) {
     #threshold { animation-duration: 1200ms; }
   }
@@ -172,6 +179,9 @@
       <code id="failure-detail"></code>
     </div>
   </div>
+
+  <!-- Boot log: appears only if the sky has not appeared after eight seconds. -->
+  <pre id="bootlog"></pre>
 
   <!-- Boot diagnostics. Read by tooling, invisible to the eye. -->
   <pre id="diag" hidden></pre>

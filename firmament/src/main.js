@@ -23,21 +23,40 @@ const thresholdSub = document.querySelector('#threshold .sub');
 const params = new URLSearchParams(location.search);
 const source = params.get('state') ?? './state.json';
 
+// Boot log: a line per stage, visible only if the sky never appears. When it is
+// black and you do not know why, this is the first thing to read.
+const bootLog = document.getElementById('bootlog');
+const stage = (msg) => {
+  console.info('[firmament]', msg);
+  if (bootLog) bootLog.textContent += `${(performance.now() | 0)}ms  ${msg}\n`;
+};
+setTimeout(() => { if (document.documentElement.dataset.field !== 'running') bootLog?.classList.add('visible'); }, 8000);
+
 boot().catch(fail);
 
 async function boot() {
+  stage('fetching the record');
   const response = await fetch(source, { cache: 'no-store' });
   if (!response.ok) throw new Error(`could not read ${source}: HTTP ${response.status}`);
   const state = await response.json();
+  stage(`record read: ${state.contributions.length} contributions`);
   const data = substrateFromRecord(state, { minContributions: Number(params.get('min') ?? 1) });
   if (!data.domains.length) throw new Error('the record has no contributions yet');
+  stage(`substrate: ${data.domains.length} domains`);
 
   if (thresholdSub) {
     thresholdSub.textContent = `${state.members.filter((m) => m.state === 'IN').length} present · ${state.contributions.length} contributions · ${data.domains.length} domains`;
   }
 
   const field = new Field({ canvas, data });
+  stage('embedding and renderer built');
   field.start();
+  stage('render loop started; waiting for the first frames');
+  field.bus.on('field:frame', function first({ frame }) {
+    if (frame < 3) return;
+    field.bus.off('field:frame', first);
+    stage('frames are being produced');
+  });
   window.__FIELD__ = field;
   window.__RECORD__ = state;
 

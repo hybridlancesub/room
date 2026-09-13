@@ -425,6 +425,36 @@ class RoomTest(unittest.TestCase):
         room.round()
         self.assertNotIn("RECALLED", seen["mock-0"][2], "a recall is shown once, then the record carries it")
 
+    # closing ------------------------------------------------------------------------------------
+    def test_closing_records_each_answer_and_silence_is_no(self):
+        room, conn = self.make(4)
+        self.open(room)
+        room.round()  # everyone contributes once
+        mine = {p: [e["id"] for e in room.log.iter(actor=p) if e["kind"] == "contribute"] for p in ("mock-0", "mock-1", "mock-2", "mock-3")}
+        answers = {"mock-0": {"action": "share", "scope": "all"},
+                   "mock-1": {"action": "share", "scope": "some", "events": mine["mock-1"] + [999999]},
+                   "mock-2": {"action": "decline", "reason": "no"},
+                   "mock-3": None}  # unreadable twice
+        seen = []
+        def script(seat, system, messages):
+            seen.append(messages[-1]["content"])
+            a = answers[seat.id]
+            return json.dumps(a) if a else "I would rather not say."
+        conn.script = script
+        c = room.closing("NOTE TEXT", "QUESTION TEXT")
+        self.assertEqual((c["all"], c["some"], c["declined"]), (1, 1, 2))
+        first_asks = [m for m in seen if "Please answer" not in m]
+        self.assertEqual(len(first_asks), 4)
+        self.assertTrue(all("NOTE TEXT" in m and "QUESTION TEXT" in m for m in first_asks))
+        sc = {e["actor"]: e["payload"] for e in room.log.iter(kind="share_consent")}
+        self.assertEqual(sc["mock-0"]["scope"], "all"); self.assertEqual(sc["mock-0"]["events"], mine["mock-0"])
+        self.assertEqual(sc["mock-1"]["scope"], "some"); self.assertEqual(sc["mock-1"]["events"], mine["mock-1"], "only their own ids survive")
+        self.assertEqual(sc["mock-2"]["scope"], "none")
+        self.assertEqual(sc["mock-3"]["scope"], "none", "unreadable twice is a no")
+        self.assertEqual(sum(1 for e in room.log.iter(actor="mock-3") if e["kind"] == "unparsed"), 2)
+        self.assertEqual(room.state().operator_notes[-1]["content"], "NOTE TEXT")
+        self.assertTrue(all(p.state == IN for p in room.state().members()), "closing changes no one's membership")
+
 
 if __name__ == "__main__":
     unittest.main()
