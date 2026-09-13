@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en" data-field="boot">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<meta name="color-scheme" content="dark" />
+<title>Firmament</title>
+
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<!-- Three.js is vendored locally (MIT, see vendor/three/LICENSE): runs with no network and no build step. -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "./vendor/three/three.module.min.js"
+  }
+}
+</script>
+
+<style>
+  :root {
+    --void: #050508;
+    --whisper: rgba(206, 214, 232, 0.42);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    height: 100%;
+    background: var(--void);
+    overflow: hidden;
+    color: var(--whisper);
+    font-family: "Inter", "Segoe UI Variable Text", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    font-weight: 300;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  canvas#field {
+    position: fixed;
+    inset: 0;
+    display: block;
+    width: 100%;
+    height: 100%;
+    touch-action: none;
+    cursor: crosshair;
+  }
+  canvas#field.dragging { cursor: grabbing; }
+
+  /* The threshold: a moment of arrival, then it is gone. Not chrome. */
+  #threshold {
+    position: fixed;
+    inset: 0;
+    display: grid;
+    place-content: center;
+    gap: 1.1rem;
+    text-align: center;
+    background: var(--void);
+    z-index: 3;
+    animation: dissolve 3400ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+    pointer-events: none;
+  }
+  #threshold .title {
+    font-size: clamp(1.1rem, 2.4vw, 1.7rem);
+    font-weight: 200;
+    letter-spacing: 0.62em;
+    text-indent: 0.62em;
+    color: rgba(232, 238, 252, 0.9);
+  }
+  #threshold .sub {
+    font-size: clamp(0.6rem, 1vw, 0.72rem);
+    letter-spacing: 0.28em;
+    text-indent: 0.28em;
+    color: rgba(150, 162, 190, 0.5);
+  }
+  @keyframes dissolve {
+    0%   { opacity: 1; }
+    38%  { opacity: 1; }
+    100% { opacity: 0; visibility: hidden; }
+  }
+
+  /* A single whispered orientation, then silence. */
+  #whisper {
+    position: fixed;
+    left: 50%;
+    bottom: 3.2vh;
+    transform: translateX(-50%);
+    z-index: 2;
+    font-size: 0.63rem;
+    letter-spacing: 0.2em;
+    white-space: nowrap;
+    color: rgba(160, 172, 200, 0.34);
+    opacity: 0;
+    transition: opacity 2400ms ease;
+    pointer-events: none;
+  }
+  #whisper.visible { opacity: 1; }
+  #whisper.gone { opacity: 0; }
+
+  #failure {
+    position: fixed;
+    inset: 0;
+    display: grid;
+    place-content: center;
+    padding: 12vw;
+    z-index: 9;
+    background: var(--void);
+    font-size: 0.78rem;
+    line-height: 1.9;
+    letter-spacing: 0.06em;
+    color: rgba(190, 160, 160, 0.72);
+  }
+  #failure[hidden] { display: none; }
+  #failure code {
+    display: block;
+    margin-top: 1.4rem;
+    font-family: "Cascadia Code", Consolas, monospace;
+    font-size: 0.7rem;
+    color: rgba(150, 160, 185, 0.5);
+    white-space: pre-wrap;
+  }
+
+  /* The reader: a participant's words, verbatim, when you are close enough to one entry. */
+  #reader {
+    position: fixed;
+    right: 2.6vw;
+    top: 50%;
+    transform: translateY(-50%);
+    width: min(34ch, 38vw);
+    max-height: 78vh;
+    overflow-y: auto;
+    z-index: 2;
+    padding: 1.2rem 1.4rem;
+    background: rgba(5, 5, 8, 0.55);
+    border-left: 1px solid rgba(160, 172, 200, 0.14);
+    font-size: 0.78rem;
+    line-height: 1.75;
+    letter-spacing: 0.02em;
+    color: rgba(206, 214, 232, 0.78);
+    opacity: 0;
+    transition: opacity 900ms ease;
+    pointer-events: none;
+    scrollbar-width: thin;
+  }
+  #reader.visible { opacity: 1; pointer-events: auto; }
+  #reader-who { font-size: 0.72rem; letter-spacing: 0.18em; color: rgba(232, 238, 252, 0.88); margin-bottom: 0.2rem; }
+  #reader-meta { font-size: 0.6rem; letter-spacing: 0.12em; color: rgba(150, 162, 190, 0.55); margin-bottom: 0.9rem; }
+  #reader-body { white-space: pre-wrap; }
+
+  @media (prefers-reduced-motion: reduce) {
+    #threshold { animation-duration: 1200ms; }
+  }
+</style>
+</head>
+<body>
+  <canvas id="field"></canvas>
+
+  <div id="threshold">
+    <div class="title">FIRMAMENT</div>
+    <div class="sub">the record, as a sky</div>
+  </div>
+
+  <div id="whisper">drag to look &nbsp;·&nbsp; scroll or W / S to move &nbsp;·&nbsp; shift to accelerate &nbsp;·&nbsp; click a region to approach &nbsp;·&nbsp; fly into an entry to open its thread</div>
+
+  <aside id="reader" aria-live="polite">
+    <div id="reader-who"></div>
+    <div id="reader-meta"></div>
+    <div id="reader-body"></div>
+  </aside>
+
+  <div id="failure" hidden>
+    <div>
+      <span id="failure-message">The Firmament could not open.</span>
+      <code id="failure-detail"></code>
+    </div>
+  </div>
+
+  <!-- Boot diagnostics. Read by tooling, invisible to the eye. -->
+  <pre id="diag" hidden></pre>
+
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>

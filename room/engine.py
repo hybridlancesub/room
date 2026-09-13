@@ -291,6 +291,9 @@ class Room:
         if a in CONTRIBUTION_KINDS:
             domain = _clean(act.get("domain"), 60) or (self.state().presences[pid].domain or "")
             payload = {"domain": domain, "content": _clean(act.get("content"), 2000)}
+            title = _clean(act.get("title"), 80)
+            if title:
+                payload["title"] = title
             if a in ("affirm", "challenge"):
                 payload["target"] = _int(act.get("target"))
                 if payload["target"] is None:

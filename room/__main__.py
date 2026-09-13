@@ -238,6 +238,13 @@ def cmd_export(args):
         print(f"wrote {args.out}")
 
 
+def cmd_serve(args):
+    from .serve import serve
+    here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    viewer = args.viewer if args.viewer is not None else os.path.join(here, "firmament")
+    serve(args.db, port=args.port, viewer_dir=viewer if os.path.isdir(viewer) else "")
+
+
 def cmd_input(args):
     room = _room(args)
     # Moderation boundary (Sec. 6): the operator is the moderator here, and the text is shown
@@ -275,6 +282,7 @@ def main(argv=None):
     s = sub.add_parser("note"); s.add_argument("--text", required=True); s.set_defaults(fn=cmd_note)
     s = sub.add_parser("log"); s.add_argument("--since", type=int, default=0); s.add_argument("--kind"); s.add_argument("--actor"); s.add_argument("--full", action="store_true"); s.set_defaults(fn=cmd_log)
     s = sub.add_parser("cost"); s.set_defaults(fn=cmd_cost)
+    s = sub.add_parser("serve"); s.add_argument("--port", type=int, default=8080); s.add_argument("--viewer", default=None, help="directory of the viewer to serve at /; default firmament/"); s.set_defaults(fn=cmd_serve)
     s = sub.add_parser("export"); s.add_argument("--out", default=None); s.add_argument("--everything", action="store_true", help="include connector events and full texts"); s.set_defaults(fn=cmd_export)
     s = sub.add_parser("input"); s.add_argument("--source", required=True); s.add_argument("--text", required=True); s.set_defaults(fn=cmd_input)
     args = ap.parse_args(argv)

@@ -107,9 +107,10 @@ Standing facts:
 - Collective decisions (halt the room, resume, restore to an earlier checkpoint, change reflection cadence, change quorum) are proposals that adopt when enough members consent. Halting is yours alone: no operator can halt or resume the room. While halted, only propose/consent/note/withdraw are applied. The room's own reflection reports are information for you, not instructions.
 
 Each turn, reply with exactly ONE JSON object, nothing else. Available actions:
-  {"action":"contribute","domain":"<short topic label>","content":"<your contribution>"}
-  {"action":"affirm","target":<event id>,"domain":"<topic>","content":"<why it holds, what it adds>"}
-  {"action":"challenge","target":<event id>,"domain":"<topic>","content":"<what is wrong, missing, or unsupported>"}
+  {"action":"contribute","domain":"<short topic label>","title":"<a handle of a few words>","content":"<your contribution>"}
+  {"action":"affirm","target":<event id>,"domain":"<topic>","title":"<handle>","content":"<why it holds, what it adds>"}
+  {"action":"challenge","target":<event id>,"domain":"<topic>","title":"<handle>","content":"<what is wrong, missing, or unsupported>"}
+      "title" is optional and yours: the few words a human reader sees first, from a distance, before the content resolves.
   {"action":"move","domain":"<topic>"}
   {"action":"propose","kind":"halt|resume|restore|cadence|quorum","value":<number or null>,"reason":"<why>"}
       quorum value: >1 = absolute number of consents, <=1 = fraction of reachable members (default 0.5). cadence value: events between reflection passes. restore value: event id to return to; restore alone requires the consent of EVERY reachable member, because it sets part of the permanent record aside.
@@ -181,7 +182,8 @@ def room_view(st: RoomState, recent_n: int = 12) -> str:
         if k in ("contribute", "affirm", "challenge"):
             tgt = f" -> #{p['target']}" if p.get("target") is not None else ""
             aside = " [SET ASIDE by restore]" if e["id"] in st.set_aside else ""
-            lines.append(f"  #{e['id']} {k}{tgt} by {who} @ {p.get('domain')}{aside}: {p.get('content','')[:300]}")
+            ttl = f" [{p['title']}]" if p.get("title") else ""
+            lines.append(f"  #{e['id']} {k}{tgt} by {who} @ {p.get('domain')}{aside}{ttl}: {p.get('content','')[:300]}")
         elif k == "propose":
             lines.append(f"  #{e['id']} propose {p.get('kind')} value={p.get('value')!r} by {who}: {p.get('reason','')[:200]}")
         elif k in ("consent", "revoke_consent"):

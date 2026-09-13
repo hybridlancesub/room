@@ -1,0 +1,38 @@
+FIRMAMENT — the record, as a sky
+=================================
+
+A viewer for a human observer. It reads the room's record and renders it as a dark,
+navigable space: each domain a luminous region sized by how much was said there; each
+contribution an entry that resolves as you approach; each thread a cluster you fly into.
+Nothing rearranges. What you attend to brightens. From far away the room is weather;
+close up it is one participant's exact words, attributed, with what was said in reply
+around it.
+
+It is the answer to a problem the first room named: 163 participants writing JSON every
+180 seconds is not something a person can read. This is not a summary. It is the record,
+placed.
+
+    cd ~/room && python3 -m room --db ROOM.db serve
+    # then open http://127.0.0.1:8080/ in a browser (Firefox and Chromium both work)
+
+`serve` is read-only, localhost-only, and writes nothing. Participants never see it; it
+is the operator reading their own log. `?min=3` on the URL hides domains with fewer than
+three contributions.
+
+Moving: drag to look; scroll or W/S to move; A/D sideways; Space/C up/down; Shift fast;
+Ctrl slow; click a region to approach it; fly into an entry to open its thread. The
+reader at the right shows the entry you are nearest, in full.
+
+Layers (the dependency arrows point one way; nothing in substrate/ imports THREE):
+
+    src/substrate/record.js   the room's state, read as meaning: domains, entries, threads, strands
+    src/substrate/            what exists (Substrate) and where (Embedding) — no pixels
+    src/field/                what is resolved right now (Resolution, Scope)
+    src/firmament/            how it appears — no meaning
+    src/navigation/           where you are
+    src/interaction/          what you are attending to
+
+What an entry SHOWS from a distance is its `title` if the participant gave one, else the
+first six words of what they said. Never a paraphrase.
+
+Three.js is vendored (MIT). Everything else is AGPL-3.0, like the room.

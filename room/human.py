@@ -7,6 +7,7 @@ The reply format is plain text, translated to the same JSON actions models send:
 
     <text>                          contribute  (domain = your current one, or "unplaced")
     @domain <text>                  contribute in a domain
+    [handle] <text>                 a short title first, in square brackets, works with any of the three above
     +123 <text>                     affirm event 123
     -123 <text>                     challenge event 123
     move domain
@@ -141,10 +142,21 @@ def translate(line: str, *, gate: bool = False, entry: bool = False, delivery: b
     if s[0] in "+-" and len(s) > 1 and s[1].isdigit():
         num, _, text = s[1:].partition(" ")
         domain, text = _domain_prefix(text)
-        return {"action": "affirm" if s[0] == "+" else "challenge", "target": _int(num),
-                "domain": domain, "content": text.strip()}
+        title, text = _title_prefix(text)
+        d = {"action": "affirm" if s[0] == "+" else "challenge", "target": _int(num), "domain": domain, "content": text.strip()}
+        return {**d, "title": title} if title else d
     domain, text = _domain_prefix(s)
-    return {"action": "contribute", "domain": domain, "content": text.strip()}
+    title, text = _title_prefix(text)
+    d = {"action": "contribute", "domain": domain, "content": text.strip()}
+    return {**d, "title": title} if title else d
+
+
+def _title_prefix(text: str):
+    text = text.strip()
+    if text.startswith("[") and "]" in text:
+        t, _, rest = text[1:].partition("]")
+        return t.strip(), rest
+    return None, text
 
 
 def _domain_prefix(text: str):
