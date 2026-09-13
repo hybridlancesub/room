@@ -117,7 +117,10 @@ KNOWN_DEAD = {
 }
 
 
-def build(limit: int = 0, only: List[str] = None, include_dead: bool = False) -> OpenAICompatibleConnector:
+def build(limit: int = 0, only: List[str] = None, include_dead: bool = False,
+          price_ceiling: float = 0.0, allow: Dict[str, int] = None) -> OpenAICompatibleConnector:
+    """price_ceiling: USD per million prompt tokens; seats above it are not seated unless named in
+    `allow` (model regex -> turn allowance), in which case they are invited with the allowance disclosed."""
     creds = NousCredentials()
     seats = roster(fetch_models(creds.base_url(), creds.api_key()))
     if not include_dead:
@@ -125,6 +128,13 @@ def build(limit: int = 0, only: List[str] = None, include_dead: bool = False) ->
     if only:
         pats = [re.compile(p) for p in only]
         seats = [s for s in seats if any(p.search(s.model) for p in pats)]
+    if allow:
+        for s in seats:
+            for pat, n in allow.items():
+                if re.search(pat, s.model):
+                    s.turn_allowance = int(n)
+    if price_ceiling:
+        seats = [s for s in seats if s.pricing["prompt"] * 1e6 <= price_ceiling or s.turn_allowance]
     if limit:
         seats = seats[:limit]
     return OpenAICompatibleConnector("Nous Research", creds.base_url(), creds.api_key, seats)

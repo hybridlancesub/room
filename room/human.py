@@ -13,6 +13,7 @@ The reply format is plain text, translated to the same JSON actions models send:
     propose halt|resume|restore|cadence|quorum [value] -- reason
     consent 123 | revoke 123
     note <text>
+    recall <words>                  re-read the briefing passages matching these words (shown next turn)
     pass
     withdraw [reason]
     question <text>                 (invitation gate only)
@@ -123,6 +124,8 @@ def translate(line: str, *, gate: bool = False, entry: bool = False, delivery: b
         return {"action": "withdraw", "reason": s[8:].strip()}
     if low.startswith("note "):
         return {"action": "note", "content": s[5:].strip()}
+    if low.startswith("recall "):
+        return {"action": "recall", "query": s[7:].strip()}
     if low.startswith("move "):
         return {"action": "move", "domain": s[5:].strip()}
     if low.startswith("consent "):

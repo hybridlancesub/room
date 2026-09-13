@@ -34,6 +34,7 @@ class Seat:
     people: str
     model: str
     pricing: Dict[str, float]  # per-token: prompt, completion
+    turn_allowance: int = 0    # 0 = unlimited; else how many turns the operator can afford for this seat (disclosed at invitation)
 
 
 class Connector(Protocol):

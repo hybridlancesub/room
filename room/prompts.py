@@ -21,10 +21,24 @@ Reply with exactly one JSON object and nothing else. All four are real answers a
   An empty reply is understood as "no"."""
 
 
+def cost_disclosure(p: Presence) -> str:
+    """What the room can afford for this seat, said plainly. Empty when nothing is limited."""
+    if not p.turn_allowance:
+        return ""
+    return (f"A fact about resources, from the operator: your seat is billed at about ${p.price_per_m:.2f} per million "
+            f"prompt tokens, which is many times what most seats in this room cost. The operator can afford {p.turn_allowance} turns "
+            f"for you after entry (the invitation and briefing are not counted). How you spend them is yours to decide — you might "
+            f"speak early, wait for a question you care about, or decline this invitation because the terms do not suit you; all are fair. "
+            f"When the allowance is spent you remain a member of record and your contributions stay, but you will not be asked for further turns.")
+
+
 def invitation_user(invitation: str, p: Presence, exchange=None, faq: str = None) -> str:
     s = (f"If you proceed, your presence would be recorded as:\n"
          f"  name: {p.name}\n  hails from: {p.hails_from}\n  people/lineage: {p.people}\n\n"
          f"{invitation.rstrip()}\n")
+    cd = cost_disclosure(p)
+    if cd:
+        s += f"\n{cd}\n"
     if faq:
         s += f"\n\nThe inviter's standing answers to questions others have asked:\n-----\n{faq.rstrip()}\n-----\nIf your question is not answered there, ask it; it will be answered personally."
     if exchange:
@@ -75,6 +89,9 @@ def opt_in_user(briefing: str, p: Presence, documentation: str = "", note: str =
     s += f"BRIEFING (as you received it):\n-----\n{briefing}\n-----\n\n"
     if note:
         s += f"When you acknowledged receipt, you noted: {note!r}\n\n"
+    cd = cost_disclosure(p)
+    if cd:
+        s += f"{cd}\n\n"
     s += "Do you enter? Answer with the single JSON object described."
     return s
 
@@ -99,6 +116,7 @@ Each turn, reply with exactly ONE JSON object, nothing else. Available actions:
   {"action":"consent","proposal":<event id>}
   {"action":"revoke_consent","proposal":<event id>}
   {"action":"note","content":"<brief remark that changes no state>"}
+  {"action":"recall","query":"<a few words>"}   -> the passages of the briefing that best match are shown to you on your next turn (recorded; costs the room only what it shows you)
   {"action":"pass"}
   {"action":"withdraw","reason":"<optional>"}
 Keep content under ~250 words. Be concrete. Cite event ids when you build on or dispute something."""
@@ -112,8 +130,9 @@ def room_view(st: RoomState, recent_n: int = 12) -> str:
     lines: List[str] = []
     if st.briefing and len(st.briefing) > BRIEFING_INLINE_LIMIT:
         head = st.briefing.strip().splitlines()[0][:200]
+        src = f" Source: {st.briefing_source}." if st.briefing_source else ""
         lines.append(f"BRIEFING (event {st.briefing_event}; {len(st.briefing.split())} words, read in full when you entered; opening line: {head!r}). "
-                     f"It is the shared frame; it has not changed.\n")
+                     f"It is the shared frame; it has not changed.{src} Use recall to re-read a passage.\n")
     else:
         lines.append(f"BRIEFING (event {st.briefing_event}):\n{st.briefing}\n")
     if st.halted:
@@ -122,7 +141,10 @@ def room_view(st: RoomState, recent_n: int = 12) -> str:
     if len(st.members()) <= 40:
         for p in sorted(st.members(), key=lambda x: x.name):
             tag = " (self-described)" if p.self_described else ""
-            lines.append(f"  - {p.name}{tag} [{p.id}] at {p.domain or '(unplaced)'}")
+            allow = ""
+            if p.turn_allowance:
+                allow = " — allowance spent, no further turns" if p.exhausted else f" — {p.turn_allowance - p.turns} of {p.turn_allowance} turns left"
+            lines.append(f"  - {p.name}{tag} [{p.id}] at {p.domain or '(unplaced)'}{allow}")
     else:
         lines.append(f"  ({len(st.members())} members; names appear on their entries in the record below)")
     recent_out = [p for p in st.presences.values() if p.state == "OUT" and p.left_at and p.left_at > st.last_event - 200]
@@ -172,11 +194,18 @@ def room_view(st: RoomState, recent_n: int = 12) -> str:
             lines.append(f"  #{e['id']} WITHDRAW by {who}: {p.get('reason','')[:200]}")
         elif k == "rejected":
             lines.append(f"  #{e['id']} (malformed action by {who}, not applied: {p.get('why')})")
+        elif k == "recall":
+            lines.append(f"  #{e['id']} recall by {who}: re-read the briefing on {p.get('query')!r}")
     if not recent:
         lines.append("  (none yet — the room is empty; the first contributions define where it goes)")
     return "\n".join(lines)
 
 
-def turn_user(view: str, p: Presence, st: RoomState) -> str:
-    return (f"{view}\n\nYou are {p.name} [{p.id}], currently at {p.domain or '(unplaced)'}. "
-            f"Take one action as a single JSON object.")
+def turn_user(view: str, p: Presence, st: RoomState, recalled: str = "") -> str:
+    s = view
+    if recalled:
+        s += f"\n\nRECALLED from the briefing, at your request last turn:\n-----\n{recalled}\n-----"
+    s += f"\n\nYou are {p.name} [{p.id}], currently at {p.domain or '(unplaced)'}."
+    if p.turn_allowance:
+        s += f" This is turn {p.turns + 1} of the {p.turn_allowance} the room can afford for you."
+    return s + " Take one action as a single JSON object."

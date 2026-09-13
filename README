@@ -15,6 +15,12 @@ Pure Python 3 stdlib. No framework, no provider baked in. One SQLite file per ro
     python3 -m room --db R.db input --source X --text "..."   # external input -> moderation boundary
 
     --only REGEX (repeatable) / --limit N   restrict the roster
+    --price-ceiling USD                     per million prompt tokens; --nous seats above it are not seated ...
+    --allow REGEX=TURNS (repeatable)        ... unless named here: seated with a turn allowance, disclosed at both gates
+    --seats-per-round N                     rotate: N seats per round, everyone before anyone repeats (humans always in)
+    --budget USD                            on-screen runway after each round (not a cap)
+    open --briefing-source URL              where the briefing lives outside the room, for attribution
+    export [--out FILE] [--everything]      the record as plain text, in order, nothing summarized
     --mock N                                N free, deterministic participants
     --human "Name / hails from [/ people]"  seat one person; same gates, same actions, replies on stdin
     --human-timeout SEC                     a human turn that gets no reply in time is recorded as pass
@@ -71,6 +77,25 @@ Briefing cost              Sent in full to every participant at gate 2. In turns
 Consent threshold          settings.quorum: <=1 = fraction of reachable members (default 0.5);
                            >1 = absolute count. Unreachable (3 consecutive connector failures) members
                            are excluded from the denominator so a dead seat cannot block the room.
+
+Turn allowance             A seat the operator can only afford for N turns is told so at the invitation and at
+                           entry (price per million tokens, the count, that the choice of how to spend them is
+                           theirs, that declining is fair). Spent = still a member of record, no longer asked,
+                           out of the quorum denominator. Nothing about it is hidden from the seat or the room.
+Recall                     `{"action":"recall","query":...}`: matching paragraphs of the briefing (pure text
+                           lookup, no model call) shown to the asker on its next turn only. Recorded as an event.
+                           This is how a long briefing stays available without riding every turn.
+
+What room 1 cost (2026-09-05, 163 members, 11 rounds, $153)
+                           61.7M prompt tokens vs 1.6M completion: the spend was what the room SENT. Three
+                           causes, in order: (1) each seat's "memory" carried its own last three exchanges, each
+                           holding a full copy of the view, so a turn grew from 3.5k tokens in round 1 to ~31k by
+                           round 5; (2) the view itself listed 163 members and 30 domains every turn; (3) a
+                           100x price spread across seats with identical payloads: 11 seats at $10-60/M were 55%
+                           of the total, the cheapest 67 seats under 2%. Fixes: memory keeps only the seat's own
+                           last reply (the record is the shared memory); the view collapses lists past a size;
+                           price ceiling + disclosed allowance for the seats above it. Measured after: ~3k tokens
+                           per turn.
 
 Spend                      Every reply is charged to the ledger (gateway-reported cost when present).
                            No cap. A `cost_alert` event + stderr line at each $50 multiple.

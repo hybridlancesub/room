@@ -30,7 +30,8 @@ DEFAULT_SETTINGS = {
 }
 
 CONTRIBUTION_KINDS = ("contribute", "affirm", "challenge")
-VISIBLE_KINDS = CONTRIBUTION_KINDS + ("propose", "consent", "revoke_consent", "note", "move", "withdraw", "rejected")
+VISIBLE_KINDS = CONTRIBUTION_KINDS + ("propose", "consent", "revoke_consent", "note", "move", "withdraw", "rejected", "recall")
+TURN_KINDS = VISIBLE_KINDS + ("unparsed",)   # every attributed outcome of a turn, counted against an allowance
 
 
 @dataclass
@@ -50,6 +51,10 @@ class Presence:
     seat: Optional[str] = None               # what the connector reported (kept for uniqueness; never shown as lineage once self-described)
     self_described: bool = False
     questions: list = field(default_factory=list)   # [(question, answer|None)] at the invitation gate
+    price_per_m: float = 0.0                 # USD per million prompt tokens, as disclosed at invitation
+    turn_allowance: int = 0                  # 0 = unlimited; disclosed at invitation
+    turns: int = 0                           # turns taken since entry
+    exhausted: bool = False                  # allowance spent: still a member of record, no longer asked
 
     def to_dict(self):
         return self.__dict__.copy()
@@ -76,6 +81,7 @@ class RoomState:
     faq: Optional[str] = None                # inviter's standing answers to common invitation-gate questions
     briefing: Optional[str] = None
     briefing_event: Optional[int] = None
+    briefing_source: Optional[str] = None    # where the briefing lives outside the room (a URL), for attribution
     settings: Dict[str, Any] = field(default_factory=lambda: dict(DEFAULT_SETTINGS))
     contributions: Dict[int, Dict[str, Any]] = field(default_factory=dict)   # active only
     set_aside: Set[int] = field(default_factory=set)
@@ -95,7 +101,9 @@ class RoomState:
         return [p for p in self.presences.values() if p.state == IN]
 
     def reachable_members(self) -> List[Presence]:
-        return [p for p in self.members() if not p.unreachable]
+        """Members who can still be asked: not unreachable, allowance not spent. Others remain
+        members of record but leave the quorum denominator so they cannot block the collective."""
+        return [p for p in self.members() if not p.unreachable and not p.exhausted]
 
     def domains(self) -> Dict[str, Dict[str, Any]]:
         out: Dict[str, Dict[str, Any]] = {}
@@ -141,9 +149,15 @@ class RoomState:
             self.recent.append(ev)
             if len(self.recent) > 60:
                 del self.recent[:-60]
+        if k in TURN_KINDS and pr is not None and pr.state == IN:
+            pr.turns += 1
+            if pr.turn_allowance and pr.turns >= pr.turn_allowance:
+                pr.exhausted = True
 
         if k == "invite":
-            self.presences[p["id"]] = Presence(p["id"], p["name"], p["hails_from"], p["people"])
+            self.presences[p["id"]] = Presence(p["id"], p["name"], p["hails_from"], p["people"],
+                                              price_per_m=float(p.get("price_per_m") or 0),
+                                              turn_allowance=int(p.get("turn_allowance") or 0))
         elif k == "invitation":
             self.invitation, self.invitation_event = p["text"], eid
         elif k == "reinvite":
@@ -175,6 +189,7 @@ class RoomState:
                         qa[1] = p.get("content", "")
         elif k == "brief":
             self.briefing, self.briefing_event = p["text"], eid
+            self.briefing_source = p.get("source") or None
         elif k == "briefed":
             tgt = self.presences.get(p["presence"])
             if tgt and tgt.state == ACCEPTED:

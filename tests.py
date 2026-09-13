@@ -376,6 +376,55 @@ class RoomTest(unittest.TestCase):
         self.assertEqual([a for a in self.alerts if a.startswith("COST")], ["COST ALERT: spend crossed $50 (now $60.00)", "COST ALERT: spend crossed $100 (now $120.00)"])
         self.assertFalse(room.state().halted)
 
+    # turn allowance ------------------------------------------------------------------------------
+    def test_allowance_is_disclosed_at_both_gates_then_stops_asking_without_removing(self):
+        room, conn = self.make(3)
+        conn._seats[0].turn_allowance = 2
+        conn._seats[0].pricing = {"prompt": 10e-6, "completion": 50e-6}
+        seen = []
+        inner = conn.script
+        def spy(seat, system, messages):
+            seen.append((seat.id, system, messages[-1]["content"]))
+            return inner(seat, system, messages)
+        conn.script = spy
+        self.open(room)
+        gates = [m for sid, sys_, m in seen if sid == "mock-0" and ("accept_invitation" in sys_ or "opt_in" in sys_)]
+        self.assertEqual(len(gates), 2)
+        self.assertTrue(all("2 turns" in m and "$10.00" in m for m in gates), "the allowance and price are stated at the invitation and at entry")
+        others = [m for sid, _, m in seen if sid != "mock-0"]
+        self.assertTrue(all("turns for you" not in m for m in others), "unlimited seats hear nothing about allowances")
+        for _ in range(4):
+            room.round()
+        st = room.state()
+        p = st.presences["mock-0"]
+        self.assertEqual(p.state, IN, "a spent allowance does not remove the member")
+        self.assertTrue(p.exhausted)
+        self.assertEqual(p.turns, 2)
+        self.assertNotIn(p, st.reachable_members(), "and leaves the quorum denominator")
+        self.assertEqual(sum(1 for e in room.log.iter(actor="mock-0") if e["kind"] == "contribute"), 2)
+        self.assertEqual(st.presences["mock-1"].turns, 4)
+
+    # recall ------------------------------------------------------------------------------------
+    def test_recall_returns_briefing_passage_next_turn_only_to_the_asker(self):
+        room, conn = self.make(2, {"mock-0": [{"action": "recall", "query": "distributed systems"}]})
+        self.open(room)
+        seen = {}
+        inner = conn.script
+        def spy(seat, system, messages):
+            seen.setdefault(seat.id, []).append(messages[-1]["content"])
+            return inner(seat, system, messages)
+        conn.script = spy
+        room.round()
+        rec = [e for e in room.log.iter(kind="recall")]
+        self.assertEqual(len(rec), 1)
+        self.assertTrue(rec[0]["payload"]["found"])
+        room.round()
+        self.assertIn("RECALLED from the briefing", seen["mock-0"][1])
+        self.assertIn("distributed systems", seen["mock-0"][1])
+        self.assertNotIn("RECALLED", seen["mock-1"][1])
+        room.round()
+        self.assertNotIn("RECALLED", seen["mock-0"][2], "a recall is shown once, then the record carries it")
+
 
 if __name__ == "__main__":
     unittest.main()

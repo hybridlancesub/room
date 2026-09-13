@@ -25,7 +25,8 @@ OPERATOR = "operator"       # the infrastructure floor (Sec. 5)
 ROOM = "room"               # the engine itself (reflection pass, moderation record)
 
 PARTICIPANT_ACTIONS = {"contribute", "affirm", "challenge", "move", "propose", "consent",
-                       "revoke_consent", "withdraw", "note", "pass"}
+                       "revoke_consent", "withdraw", "note", "pass", "recall"}
+RECALL_LIMIT = 2500   # characters of briefing returned per recall
 INVITATION_ACTIONS = {"accept_invitation", "decline", "question"}
 DELIVERY_ACTIONS = {"received", "decline"}
 ENTRY_ACTIONS = {"opt_in", "decline"}
@@ -49,6 +50,7 @@ class Room:
         self.on_event = on_event
         self._stop = threading.Event()
         self.memory: Dict[str, List[dict]] = {}  # per-presence recent messages (for context)
+        self.recalled: Dict[str, str] = {}       # presence id -> briefing passage to show on its next turn (the recall event is the record)
 
     # -- helpers ----------------------------------------------------------------
     def state(self, upto: Optional[int] = None) -> RoomState:
@@ -69,7 +71,9 @@ class Room:
                 self.seat_of[seat.id] = (c, seat)
                 if seat.id not in st.presences:
                     self.emit(OPERATOR, "invite", {"id": seat.id, "name": seat.name,
-                                                   "hails_from": seat.hails_from, "people": seat.people})
+                                                   "hails_from": seat.hails_from, "people": seat.people,
+                                                   "price_per_m": round(seat.pricing.get("prompt", 0.0) * 1e6, 4),
+                                                   "turn_allowance": seat.turn_allowance})
                     n += 1
         return n
 
@@ -109,9 +113,10 @@ class Room:
         FAQ does not cover still waits for a personal answer."""
         self.emit(OPERATOR, "faq", {"text": text})
 
-    def brief(self, text: str) -> None:
-        """(b) BRIEFING: the shared frame is recorded once, then each accepted presence is marked briefed."""
-        self.emit(OPERATOR, "brief", {"text": text})
+    def brief(self, text: str, source: str = "") -> None:
+        """(b) BRIEFING: the shared frame is recorded once, then each accepted presence is marked briefed.
+        `source` is where the text lives outside the room (a URL), for attribution."""
+        self.emit(OPERATOR, "brief", {"text": text, "source": source})
         self.mark_briefed()
 
     def mark_briefed(self) -> None:
@@ -220,7 +225,7 @@ class Room:
         def one(p):
             c, seat = self.seat_of[p.id]
             hist = self.memory.get(p.id, [])
-            msgs = hist[-2:] + [{"role": "user", "content": prompts.turn_user(view, p, st)}]
+            msgs = hist[-2:] + [{"role": "user", "content": prompts.turn_user(view, p, st, self.recalled.pop(p.id, ""))}]
             try:
                 reply = c.ask(seat, prompts.SYSTEM_MEMBER, msgs)
             except ConnectorError as e:
@@ -314,6 +319,11 @@ class Room:
             self.emit(pid, "withdraw", {"reason": _clean(act.get("reason"), 600)})
         elif a == "note":
             self.emit(pid, "note", {"content": _clean(act.get("content"), 1000)})
+        elif a == "recall":
+            q = _clean(act.get("query"), 200)
+            passage = _recall(self.state().briefing or "", q, RECALL_LIMIT)
+            self.emit(pid, "recall", {"query": q, "chars": len(passage), "found": bool(passage)})
+            self.recalled[pid] = passage or f"(no passage of the briefing matched {q!r})"
 
     # -- Sec. 4(b) reflection -----------------------------------------------------
     def reflect(self) -> dict:
@@ -425,6 +435,30 @@ def _parse(text: str) -> Optional[dict]:
     elif not isinstance(a, str):
         return None
     return d
+
+
+def _recall(briefing: str, query: str, limit: int) -> str:
+    """Paragraphs of the briefing that best match the query terms, in document order, up to `limit` chars.
+    Pure text lookup, no model call: what a participant would find by re-reading."""
+    terms = [t for t in re.findall(r"[a-zA-Z][a-zA-Z'-]{2,}", query.lower())]
+    if not terms or not briefing:
+        return ""
+    paras = [x.strip() for x in re.split(r"\n\s*\n", briefing) if x.strip()]
+    scored = []
+    for i, para in enumerate(paras):
+        low = para.lower()
+        score = sum(low.count(t) for t in terms) + 3 * sum(1 for t in terms if t in low)
+        if score:
+            scored.append((score, i))
+    scored.sort(reverse=True)
+    chosen, used = [], 0
+    for _, i in scored:
+        if used + len(paras[i]) > limit:
+            continue
+        chosen.append(i); used += len(paras[i])
+        if used > limit * 0.8:
+            break
+    return "\n\n".join(f"[para {i + 1}] {paras[i]}" for i in sorted(chosen))
 
 
 def _clean(v: Any, n: int) -> str:

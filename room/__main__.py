@@ -34,7 +34,13 @@ def _connectors(args):
         cs.append(MockConnector(args.mock))
     if args.nous:
         from . import nous
-        cs.append(nous.build(limit=args.limit, only=args.only))
+        allow = {}
+        for spec in args.allow or []:
+            pat, _, n = spec.rpartition("=")
+            if not pat or not n.isdigit():
+                sys.exit(f'--allow needs REGEX=TURNS, got {spec!r}')
+            allow[pat] = int(n)
+        cs.append(nous.build(limit=args.limit, only=args.only, price_ceiling=args.price_ceiling, allow=allow))
     if args.human:
         from .human import HumanConnector
         parts = [x.strip() for x in args.human.split("/")]
@@ -90,7 +96,7 @@ def cmd_open(args):
         print(f"{c1['question']} participant(s) asked a question. See `questions`, answer with `answer`, then re-run `open` to re-ask them.")
     st = room.state()
     if st.briefing is None:
-        room.brief(open(args.briefing).read())
+        room.brief(open(args.briefing).read(), source=args.briefing_source or "")
     else:
         print(f"briefing already recorded (event {st.briefing_event})")
         room.mark_briefed()
@@ -204,6 +210,34 @@ def cmd_cost(args):
     print(f"{'TOTAL':45s} {'':5s} {'':9s} {'':9s} {room.log.total_cost():9.4f}")
 
 
+def cmd_export(args):
+    """The record as plain text, in order, nothing summarized. For reading, not for the room."""
+    room = _room(args)
+    st = room.state()
+    names = {pid: p.name for pid, p in st.presences.items()}
+    out = open(args.out, "w") if args.out else sys.stdout
+    for ev in room.log.iter():
+        k, p, who = ev["kind"], ev["payload"], names.get(ev["actor"], ev["actor"])
+        if k in ("connector_ok", "connector_error", "briefed") and not args.everything:
+            continue
+        if k in ("brief", "invitation", "documentation", "faq") and not args.everything:
+            print(f"#{ev['id']} {k} by {who}: ({len(p.get('text', ''))} chars, omitted; see the source files)\n", file=out)
+            continue
+        t = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(ev["ts"]))
+        head = f"#{ev['id']} [{t}] {k} by {who}"
+        if k in ("contribute", "affirm", "challenge"):
+            tgt = f" -> #{p['target']}" if p.get("target") is not None else ""
+            print(f"{head}{tgt} @ {p.get('domain')}\n{p.get('content', '')}\n", file=out)
+        elif k == "propose":
+            print(f"{head}: {p.get('kind')} value={p.get('value')!r}\n{p.get('reason', '')}\n", file=out)
+        else:
+            body = {kk: v for kk, v in p.items() if v not in (None, "", {}, [])}
+            print(f"{head}: {json.dumps(body, ensure_ascii=False)}\n", file=out)
+    if args.out:
+        out.close()
+        print(f"wrote {args.out}")
+
+
 def cmd_input(args):
     room = _room(args)
     # Moderation boundary (Sec. 6): the operator is the moderator here, and the text is shown
@@ -228,9 +262,11 @@ def main(argv=None):
     ap.add_argument("--human-timeout", type=float, default=180.0, help="seconds a human turn waits before recording pass")
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--only", action="append", default=None, help="regex on model id (repeatable)")
+    ap.add_argument("--price-ceiling", type=float, default=0.0, help="USD per million prompt tokens; --nous seats above it are not seated unless named by --allow")
+    ap.add_argument("--allow", action="append", default=None, help="REGEX=TURNS: seat a model above the ceiling with a disclosed turn allowance (repeatable)")
     ap.add_argument("-v", "--verbose", action="store_true")
     sub = ap.add_subparsers(dest="cmd", required=True)
-    s = sub.add_parser("open"); s.add_argument("--invitation", required=True); s.add_argument("--briefing", required=True); s.add_argument("--documentation", default="DESIGN"); s.add_argument("--faq", default=None, help="inviter's standing answers shown with the invitation"); s.set_defaults(fn=cmd_open)
+    s = sub.add_parser("open"); s.add_argument("--invitation", required=True); s.add_argument("--briefing", required=True); s.add_argument("--briefing-source", default=None, help="URL where the briefing lives, shown for attribution"); s.add_argument("--documentation", default="DESIGN"); s.add_argument("--faq", default=None, help="inviter's standing answers shown with the invitation"); s.set_defaults(fn=cmd_open)
     s = sub.add_parser("enter"); s.set_defaults(fn=cmd_enter)
     s = sub.add_parser("questions"); s.set_defaults(fn=cmd_questions)
     s = sub.add_parser("answer"); s.add_argument("--presence", required=True); s.add_argument("--text", required=True); s.set_defaults(fn=cmd_answer)
@@ -239,6 +275,7 @@ def main(argv=None):
     s = sub.add_parser("note"); s.add_argument("--text", required=True); s.set_defaults(fn=cmd_note)
     s = sub.add_parser("log"); s.add_argument("--since", type=int, default=0); s.add_argument("--kind"); s.add_argument("--actor"); s.add_argument("--full", action="store_true"); s.set_defaults(fn=cmd_log)
     s = sub.add_parser("cost"); s.set_defaults(fn=cmd_cost)
+    s = sub.add_parser("export"); s.add_argument("--out", default=None); s.add_argument("--everything", action="store_true", help="include connector events and full texts"); s.set_defaults(fn=cmd_export)
     s = sub.add_parser("input"); s.add_argument("--source", required=True); s.add_argument("--text", required=True); s.set_defaults(fn=cmd_input)
     args = ap.parse_args(argv)
     args.fn(args)
