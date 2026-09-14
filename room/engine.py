@@ -120,6 +120,11 @@ class Room:
     def set_documentation(self, text: str) -> None:
         self.emit(OPERATOR, "documentation", {"text": text})
 
+    def add_prior(self, prior: dict) -> None:
+        """A closed room's consented entries, recorded once. Not part of this room's record of
+        contributions: no one here said these things. Reachable by `recall`, shown to no one otherwise."""
+        self.emit(OPERATOR, "prior", prior)
+
     def set_faq(self, text: str) -> None:
         """Standing answers, written by the inviter, offered with the invitation. A question the
         FAQ does not cover still waits for a personal answer."""
@@ -394,9 +399,19 @@ class Room:
             self.emit(pid, "note", {"content": _clean(act.get("content"), 1000)})
         elif a == "recall":
             q = _clean(act.get("query"), 200)
-            passage = _recall(self.state().briefing or "", q, RECALL_LIMIT)
-            self.emit(pid, "recall", {"query": q, "chars": len(passage), "found": bool(passage)})
-            self.recalled[pid] = passage or f"(no passage of the briefing matched {q!r})"
+            st = self.state()
+            where = _clean(act.get("from"), 20) or "briefing"
+            if where == "prior" and st.prior:
+                from .prior import render_entry
+                paras = [render_entry(e) for pr in st.prior for e in pr.get("entries", [])]
+                passage = _recall("\n\n".join(paras), q, RECALL_LIMIT, tag=False)
+                label = f"the prior room's record ({st.prior[-1].get('room')})"
+            else:
+                where = "briefing"
+                passage = _recall(st.briefing or "", q, RECALL_LIMIT)
+                label = "the briefing"
+            self.emit(pid, "recall", {"query": q, "from": where, "chars": len(passage), "found": bool(passage)})
+            self.recalled[pid] = (f"From {label}:\n{passage}" if passage else f"(nothing in {label} matched {q!r})")
 
     # -- Sec. 4(b) reflection -----------------------------------------------------
     def reflect(self) -> dict:
@@ -510,7 +525,7 @@ def _parse(text: str) -> Optional[dict]:
     return d
 
 
-def _recall(briefing: str, query: str, limit: int) -> str:
+def _recall(briefing: str, query: str, limit: int, tag: bool = True) -> str:
     """Paragraphs of the briefing that best match the query terms, in document order, up to `limit` chars.
     Pure text lookup, no model call: what a participant would find by re-reading."""
     terms = [t for t in re.findall(r"[a-zA-Z][a-zA-Z'-]{2,}", query.lower())]
@@ -531,7 +546,7 @@ def _recall(briefing: str, query: str, limit: int) -> str:
         chosen.append(i); used += len(paras[i])
         if used > limit * 0.8:
             break
-    return "\n\n".join(f"[para {i + 1}] {paras[i]}" for i in sorted(chosen))
+    return "\n\n".join((f"[para {i + 1}] " if tag else "") + paras[i] for i in sorted(chosen))
 
 
 def _clean(v: Any, n: int) -> str:

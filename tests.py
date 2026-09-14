@@ -47,9 +47,9 @@ class RoomTest(unittest.TestCase):
         self.tmp = tempfile.mkdtemp()
         self.alerts = []
 
-    def make(self, n=4, table=None, alert_every=50.0):
+    def make(self, n=4, table=None, alert_every=50.0, db="r.db"):
         conn = MockConnector(n, scripted(table or {}))
-        log = EventLog(os.path.join(self.tmp, "r.db"))
+        log = EventLog(os.path.join(self.tmp, db))
         room = Room(log, [conn], alert_every_usd=alert_every, alert_fn=self.alerts.append, parallel=4)
         return room, conn
 
@@ -454,6 +454,39 @@ class RoomTest(unittest.TestCase):
         self.assertEqual(sum(1 for e in room.log.iter(actor="mock-3") if e["kind"] == "unparsed"), 2)
         self.assertEqual(room.state().operator_notes[-1]["content"], "NOTE TEXT")
         self.assertTrue(all(p.state == IN for p in room.state().members()), "closing changes no one's membership")
+
+    # prior room --------------------------------------------------------------------------------
+    def test_prior_carries_only_consented_entries_and_is_reachable_by_recall(self):
+        from room.prior import consented
+        # room A: four members, then closing answers
+        a, conn = self.make(4)
+        self.open(a)
+        a.round()
+        ids = {p: [e["id"] for e in a.log.iter(actor=p) if e["kind"] == "contribute"] for p in ("mock-0", "mock-1", "mock-2", "mock-3")}
+        answers = {"mock-0": {"action": "share", "scope": "all"}, "mock-1": {"action": "share", "scope": "some", "events": ids["mock-1"]},
+                   "mock-2": {"action": "decline"}, "mock-3": {"action": "share", "scope": "some", "events": ids["mock-0"]}}  # names someone else's
+        conn.script = lambda seat, system, messages: json.dumps(answers[seat.id])
+        a.closing("closing", "may we share?")
+        pr = consented(a.log, "room A")
+        got = sorted(e["id"] for e in pr["entries"])
+        self.assertEqual(got, sorted(ids["mock-0"] + ids["mock-1"]), "decliner's and other-people's ids never travel")
+        self.assertTrue(all(e["permitted_by"] for e in pr["entries"]))
+        # room B, seeded with the prior; a member recalls from it
+        b, connb = self.make(2, {"mock-0": [{"action": "recall", "query": "distributed coordination", "from": "prior"}]}, db="b.db")
+        b.invite_all(); b.invite_text(INVITE); b.run_invitation(); b.brief(BRIEF); b.add_prior(pr); b.run_delivery(); b.run_opt_in()
+        self.assertEqual(len(b.state().contributions), 0, "the prior seeds no contributions in room B")
+        seen = {}
+        inner = connb.script
+        def spy(seat, system, messages):
+            seen.setdefault(seat.id, []).append(messages[-1]["content"]); return inner(seat, system, messages)
+        connb.script = spy
+        b.round(); b.round()
+        self.assertIn("PRIOR RECORD", seen["mock-0"][0])
+        self.assertIn("From the prior room's record", seen["mock-0"][1])
+        self.assertIn("Mock 0 adds a point", seen["mock-0"][1])
+        self.assertNotIn("Mock 2 adds", seen["mock-0"][1], "the decliner's words are not recallable")
+        rec = [e for e in b.log.iter(kind="recall")][0]
+        self.assertEqual(rec["payload"]["from"], "prior")
 
 
 if __name__ == "__main__":

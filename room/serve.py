@@ -18,6 +18,7 @@ import time
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Dict, List
 
+from .labels import canonical
 from .log import EventLog
 from .model import CONTRIBUTION_KINDS, replay
 
@@ -46,6 +47,16 @@ def state_json(log: EventLog) -> Dict[str, Any]:
             tgt = contributions[t]
             tgt["replies"].append(c["id"])
             tgt["affirms" if c["kind"] == "affirm" else "challenges"] += 1
+    # Reading-side consolidation of label variants. `domain` becomes the group's most-used
+    # spelling; `label_as_written` keeps what the participant actually typed.
+    written = [c["domain"] for c in contributions.values()] + [p.domain for p in st.members() if p.domain]
+    counts: Dict[str, int] = {}
+    for w in written:
+        counts[w] = counts.get(w, 0) + 1
+    canon = canonical(set(written), counts)
+    for c in contributions.values():
+        c["label_as_written"] = c["domain"]
+        c["domain"] = canon.get(c["domain"], c["domain"])
     domains: Dict[str, Dict[str, Any]] = {}
     for c in contributions.values():
         d = domains.setdefault(c["domain"], {"label": c["domain"], "contributions": 0, "affirms": 0, "challenges": 0,
@@ -56,8 +67,11 @@ def state_json(log: EventLog) -> Dict[str, Any]:
         d["last"] = max(d["last"], c["ts"])
     for p in st.members():
         if p.domain:
-            domains.setdefault(p.domain, {"label": p.domain, "contributions": 0, "affirms": 0, "challenges": 0,
-                                          "first": None, "last": None, "present": []})["present"].append(p.id)
+            d = canon.get(p.domain, p.domain)
+            domains.setdefault(d, {"label": d, "contributions": 0, "affirms": 0, "challenges": 0,
+                                   "first": None, "last": None, "present": []})["present"].append(p.id)
+    for d in domains.values():
+        d["spellings"] = sorted({w for w, cn in canon.items() if cn == d["label"]})
     links: Dict[tuple, Dict[str, Any]] = {}
     for c in contributions.values():
         t = c["target"]

@@ -125,6 +125,8 @@ def translate(line: str, *, gate: bool = False, entry: bool = False, delivery: b
         return {"action": "withdraw", "reason": s[8:].strip()}
     if low.startswith("note "):
         return {"action": "note", "content": s[5:].strip()}
+    if low.startswith("recall prior "):
+        return {"action": "recall", "query": s[13:].strip(), "from": "prior"}
     if low.startswith("recall "):
         return {"action": "recall", "query": s[7:].strip()}
     if low.startswith("move "):

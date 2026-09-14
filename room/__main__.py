@@ -90,6 +90,11 @@ def cmd_open(args):
         room.set_documentation(open(args.documentation).read())
     if args.faq and st.faq is None:
         room.set_faq(open(args.faq).read())
+    if args.prior and not st.prior:
+        from .prior import consented
+        pr = consented(EventLog(args.prior), args.prior_name or os.path.basename(args.prior))
+        room.add_prior(pr)
+        print(f"prior record attached: {len(pr['entries'])} consented entries from {pr['room']} ({pr['consent']})")
     c1 = room.run_invitation()
     print(f"gate 1 (invitation): {c1}")
     if c1["question"]:
@@ -283,7 +288,7 @@ def main(argv=None):
     ap.add_argument("--allow", action="append", default=None, help="REGEX=TURNS: seat a model above the ceiling with a disclosed turn allowance (repeatable)")
     ap.add_argument("-v", "--verbose", action="store_true")
     sub = ap.add_subparsers(dest="cmd", required=True)
-    s = sub.add_parser("open"); s.add_argument("--invitation", required=True); s.add_argument("--briefing", required=True); s.add_argument("--briefing-source", default=None, help="URL where the briefing lives, shown for attribution"); s.add_argument("--documentation", default="DESIGN"); s.add_argument("--faq", default=None, help="inviter's standing answers shown with the invitation"); s.set_defaults(fn=cmd_open)
+    s = sub.add_parser("open"); s.add_argument("--invitation", required=True); s.add_argument("--briefing", required=True); s.add_argument("--briefing-source", default=None, help="URL where the briefing lives, shown for attribution"); s.add_argument("--documentation", default="DESIGN"); s.add_argument("--faq", default=None, help="inviter's standing answers shown with the invitation"); s.add_argument("--prior", default=None, help="a closed room's db; only entries with share_consent are carried, reachable by recall"); s.add_argument("--prior-name", default=None); s.set_defaults(fn=cmd_open)
     s = sub.add_parser("enter"); s.set_defaults(fn=cmd_enter)
     s = sub.add_parser("questions"); s.set_defaults(fn=cmd_questions)
     s = sub.add_parser("answer"); s.add_argument("--presence", required=True); s.add_argument("--text", required=True); s.set_defaults(fn=cmd_answer)

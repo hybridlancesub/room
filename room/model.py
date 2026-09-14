@@ -82,6 +82,7 @@ class RoomState:
     briefing: Optional[str] = None
     briefing_event: Optional[int] = None
     briefing_source: Optional[str] = None    # where the briefing lives outside the room (a URL), for attribution
+    prior: List[Dict[str, Any]] = field(default_factory=list)   # records of earlier rooms, consented entries only; reachable by recall
     settings: Dict[str, Any] = field(default_factory=lambda: dict(DEFAULT_SETTINGS))
     contributions: Dict[int, Dict[str, Any]] = field(default_factory=dict)   # active only
     set_aside: Set[int] = field(default_factory=set)
@@ -166,6 +167,8 @@ class RoomState:
                 tgt.state, tgt.left_at, tgt.left_reason, tgt.ask_again = INVITED, None, None, None
         elif k == "documentation":
             self.documentation = p["text"]
+        elif k == "prior":
+            self.prior.append({"id": eid, **p})
         elif k == "faq":
             self.faq = p["text"]
         elif k == "accept_invitation":

@@ -117,7 +117,7 @@ Each turn, reply with exactly ONE JSON object, nothing else. Available actions:
   {"action":"consent","proposal":<event id>}
   {"action":"revoke_consent","proposal":<event id>}
   {"action":"note","content":"<brief remark that changes no state>"}
-  {"action":"recall","query":"<a few words>"}   -> the passages of the briefing that best match are shown to you on your next turn (recorded; costs the room only what it shows you)
+  {"action":"recall","query":"<a few words>","from":"briefing|prior"}   -> matching passages of the briefing (or, if a prior room's record is available, its entries) are shown to you on your next turn. Recorded; costs the room only what it shows you.
   {"action":"pass"}
   {"action":"withdraw","reason":"<optional>"}
 Keep content under ~250 words. Be concrete. Cite event ids when you build on or dispute something."""
@@ -160,6 +160,11 @@ def room_view(st: RoomState, recent_n: int = 12) -> str:
                      f"It is the shared frame; it has not changed.{src} Use recall to re-read a passage.\n")
     else:
         lines.append(f"BRIEFING (event {st.briefing_event}):\n{st.briefing}\n")
+    for pr in st.prior[-1:]:
+        c = pr.get("consent", {})
+        lines.append(f"PRIOR RECORD (event {pr['id']}): {pr.get('room')} — {pr.get('members')} members; {len(pr.get('entries', []))} entries "
+                     f"whose authors consented to their being shown here ({c.get('all', 0)} shared all, {c.get('some', 0)} some, {c.get('none', 0)} declined; "
+                     f"the decliners' and the unasked's words are not here). Reach it with recall from \"prior\". Its authors are not present.\n")
     if st.halted:
         lines.append(f"*** ROOM HALTED by collective consent: {st.halt_reason} — contributions are not applied until a resume proposal adopts. ***\n")
     lines.append(f"MEMBERS PRESENT ({len(st.members())}):")
@@ -175,7 +180,7 @@ def room_view(st: RoomState, recent_n: int = 12) -> str:
     recent_out = [p for p in st.presences.values() if p.state == "OUT" and p.left_at and p.left_at > st.last_event - 200]
     if recent_out:
         lines.append("RECENTLY LEFT: " + ", ".join(f"{p.name} ({p.left_reason})" for p in recent_out[:10]))
-    lines.append("\nDOMAINS (emergent):")
+    lines.append("\nDOMAINS (emergent; if one of these fits, use its label exactly as written here rather than a variant):")
     for d, info in sorted(st.domains().items(), key=lambda kv: -kv[1]["contributions"])[:15]:
         lines.append(f"  - {d}: {info['contributions']} contributions, {len(info['present'])} present")
     if len(st.domains()) > 15:

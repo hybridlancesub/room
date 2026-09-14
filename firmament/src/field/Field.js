@@ -4,6 +4,7 @@ import { Embedding } from '../substrate/Embedding.js';
 import { Scope } from './Scope.js';
 import { Resolution } from './Resolution.js';
 import { Firmament } from '../firmament/Firmament.js';
+import { paintDomains } from '../firmament/palette.js';
 import { Navigator } from '../navigation/Navigator.js';
 import { Input } from '../navigation/Input.js';
 import { Attention } from '../interaction/Attention.js';
@@ -42,6 +43,7 @@ export class Field {
 
     // ── the substrate ──────────────────────────────────────────────────────
     this.substrate = new Substrate(data);
+    paintDomains(this.substrate);
     this.embedding = new Embedding(this.substrate, embeddingOptions);
     this.scope = new Scope({ substrate: this.substrate, embedding: this.embedding });
 
