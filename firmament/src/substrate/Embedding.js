@@ -393,10 +393,18 @@ export class Embedding {
     const cached = this._childEmbeddings.get(parentEmbed.id);
     if (cached) return cached;
 
-    const children = this.substrate.children(parentEmbed.id);
+    let children = this.substrate.children(parentEmbed.id);
     if (!children.length) {
       this._childEmbeddings.set(parentEmbed.id, EMPTY_EMBEDDING);
       return EMPTY_EMBEDDING;
+    }
+    // A record can put hundreds of entries under one node. Instantiating all of
+    // them at once rasterises hundreds of glyphs in a single frame — a stall on
+    // weak GPUs. Embed the most-answered first; the rest stay latent, reachable
+    // only through the ones that were answered (their own nesting).
+    const cap = this.options.maxChildrenPerOpen ?? 140;
+    if (children.length > cap) {
+      children = [...children].sort((a, b) => b.weight - a.weight).slice(0, cap);
     }
 
     const rng = this.rng.fork(`nested:${parentEmbed.id}`);

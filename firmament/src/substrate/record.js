@@ -35,7 +35,7 @@
  * is the briefing's event id, so two viewers of the same room see the same sky.
  */
 
-const HANDLE_WORDS = 6;
+const HANDLE_WORDS = 4;
 
 export function substrateFromRecord(state, { minContributions = 1 } = {}) {
   const contributions = new Map(state.contributions.map((c) => [c.id, c]));

@@ -49,7 +49,7 @@ const LITE = {
   atlasSize: 2048,
   atlasMax: 2048,
 };
-const LITE_EMBEDDING = { filamentSegments: 24, conceptFilamentSegments: 16, relaxIterations: 200 };
+const LITE_EMBEDDING = { filamentSegments: 24, conceptFilamentSegments: 16, relaxIterations: 200, maxChildrenPerOpen: 60 };
 
 boot().catch(fail);
 
