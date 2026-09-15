@@ -9,6 +9,10 @@ import { substrateFromRecord } from './substrate/record.js';
  * One departure from the seed's silence: a reader pane. A contribution is not a
  * word; when one becomes the local anchor its full text, verbatim and
  * attributed, appears at the edge of the view. It leaves when you do.
+ *
+ * Two quality presets: full, and a light one for weak or old GPUs. The default
+ * path tries full and, if it throws or produces no frames within a window,
+ * rebuilds light. ?quality=lite|full forces either.
  */
 
 const canvas = document.getElementById('field');
@@ -32,6 +36,21 @@ const stage = (msg) => {
 };
 setTimeout(() => { if (document.documentElement.dataset.field !== 'running') bootLog?.classList.add('visible'); }, 8000);
 
+const FULL = {};
+// The light preset exists so old or weak GPUs (integrated HD 4000-era) can still
+// enter: fewer particles, smaller atlas, shorter filaments, pixel ratio capped at 1.
+const LITE = {
+  pixelRatioCap: 1,
+  dustPerRegion: 90,
+  legibility: 45,
+  vignette: 0.4,
+  grain: 0.02,
+  fogDensity: 0.00013,
+  atlasSize: 2048,
+  atlasMax: 2048,
+};
+const LITE_EMBEDDING = { filamentSegments: 24, conceptFilamentSegments: 16, relaxIterations: 200 };
+
 boot().catch(fail);
 
 async function boot() {
@@ -45,21 +64,64 @@ async function boot() {
   stage(`substrate: ${data.domains.length} domains`);
 
   if (thresholdSub) {
-    thresholdSub.textContent = `${state.members.filter((m) => m.state === 'IN').length} present · ${state.contributions.length} contributions · ${data.domains.length} domains`;
+    const present = state.members.filter((m) => m.state === 'IN').length;
+    thresholdSub.textContent = `${present} present · ${state.contributions.length} contributions · ${data.domains.length} domains`;
   }
-
-  const field = new Field({ canvas, data });
-  stage('embedding and renderer built');
-  field.start();
-  stage('render loop started; waiting for the first frames');
-  field.bus.on('field:frame', function first({ frame }) {
-    if (frame < 3) return;
-    field.bus.off('field:frame', first);
-    stage('frames are being produced');
-  });
-  window.__FIELD__ = field;
   window.__RECORD__ = state;
 
+  const forced = params.get('quality');
+  if (forced === 'lite') return open(state, data, LITE, 'light (forced)');
+  if (forced === 'full') return open(state, data, FULL, 'full (forced)');
+  try {
+    await open(state, data, FULL, 'full');
+  } catch (error) {
+    stage(`full renderer did not hold (${error?.message ?? error}); rebuilding light`);
+    await open(state, data, LITE, 'light (fallback)');
+  }
+}
+
+function open(state, data, quality, label) {
+  return new Promise((resolve, reject) => {
+    stage(`opening — ${label}`);
+    let field;
+    try {
+      field = new Field({ canvas, data, quality, embedding: quality === LITE ? LITE_EMBEDDING : {} });
+    } catch (error) {
+      return reject(error);
+    }
+    window.__FIELD__ = field;
+    field.start();
+    stage('render loop started; waiting for the first frames');
+
+    let settled = false;
+    const giveUp = setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        try { field.dispose(); } catch {}
+        window.__FIELD__ = null;
+        reject(new Error('no frames within 12 s'));
+      }
+    }, 12000);
+
+    field.bus.on('field:frame', function first({ frame }) {
+      if (frame < 3) return;
+      field.bus.off('field:frame', first);
+      if (settled) return;
+      settled = true;
+      clearTimeout(giveUp);
+      stage(`frames are being produced — ${label}`);
+      document.documentElement.dataset.field = 'running';
+      document.documentElement.dataset.fieldQuality = label;
+      if (diagnostics) diagnostics.textContent = JSON.stringify({ ...field.describe(), lastEvent: state.last_event, quality: label }, null, 2);
+      bindReader(field, state);
+      bindThreshold(field);
+      window.addEventListener('beforeunload', () => field.dispose());
+      resolve();
+    });
+  });
+}
+
+function bindThreshold(field) {
   const whisperTimer = setTimeout(() => whisper?.classList.add('visible'), 3200);
   const dismiss = () => {
     clearTimeout(whisperTimer);
@@ -68,7 +130,9 @@ async function boot() {
   };
   field.bus.on('viewer:first-movement', () => setTimeout(dismiss, 6000));
   setTimeout(dismiss, 22000);
+}
 
+function bindReader(field, state) {
   // The reader: the record, when you are close enough to one entry for it to be
   // the thing you are looking at. Anchors (domain labels) show the domain.
   field.bus.on('resolution:local-anchor', ({ id }) => {
@@ -78,7 +142,7 @@ async function boot() {
       const d = state.domains.find((x) => `d:${x.label}` === node.domainId);
       return showReader({
         who: node.label,
-        meta: d ? `${d.contributions} contributions · ${d.present?.length ?? 0} present here now` : '',
+        meta: d ? `${d.contributions} contributions · ${d.present?.length ?? 0} present here now` + (d.spellings?.length > 1 ? ` · labels: ${d.spellings.join(', ')}` : '') : '',
         body: '',
       });
     }
@@ -95,15 +159,6 @@ async function boot() {
       body: rec.content,
     });
   });
-
-  field.bus.on('field:frame', function report({ frame }) {
-    if (frame < 3) return;
-    field.bus.off('field:frame', report);
-    document.documentElement.dataset.field = 'running';
-    if (diagnostics) diagnostics.textContent = JSON.stringify({ ...field.describe(), lastEvent: state.last_event }, null, 2);
-  });
-
-  window.addEventListener('beforeunload', () => field.dispose());
 }
 
 function showReader({ who, meta, title = '', body }) {
@@ -135,5 +190,6 @@ function fail(error) {
   }
   if (detail) detail.textContent = error?.stack ?? message;
   if (panel) panel.hidden = false;
+  bootLog?.classList.add('visible');
   console.error('[firmament]', error);
 }

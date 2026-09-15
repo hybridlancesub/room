@@ -55,6 +55,8 @@ export class Firmament {
     this.typography = new Typography(embedding, {
       legibility: quality.legibility ?? 55,
       fogDensity,
+      atlasSize: quality.atlasSize,
+      atlasMax: quality.atlasMax,
     });
     // Domain strands: the macro web. They answer to attention, so the shape of
     // the whole Firmament stays legible from outside it.

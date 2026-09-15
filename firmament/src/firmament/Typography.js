@@ -41,12 +41,12 @@ import { COMMON, BILLBOARD } from './shaders.js';
  * rather than loading.
  */
 export class Typography {
-  constructor(embedding, { legibility = 55, fogDensity = 0.00012, capacity = 4096 } = {}) {
+  constructor(embedding, { legibility = 55, fogDensity = 0.00012, capacity = 4096, atlasSize, atlasMax } = {}) {
     this.embedding = embedding;
     this.capacity = capacity;
     this.legibility = legibility;
 
-    this.atlas = new GlyphAtlas({ size: 4096, maxSize: 8192 });
+    this.atlas = new GlyphAtlas({ size: atlasSize ?? 4096, maxSize: atlasMax ?? 8192 });
     this.atlasGeneration = this.atlas.generation;
 
     const texture = new THREE.CanvasTexture(this.atlas.canvas);
