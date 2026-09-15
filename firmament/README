@@ -15,6 +15,14 @@ placed.
     cd ~/room && python3 -m room --db ROOM.db serve
     # then open http://127.0.0.1:8080/ in a browser (Firefox and Chromium both work)
 
+A second view answers a different question — "what is happening right now" rather than
+"what is the shape of everything": open `/loom.html` on the same server. It is plain DOM,
+no WebGL: a text feed of the latest entries (the participants' own words), one lane per
+domain with time left to right, every entry a tick coloured by kind and sized by the
+replies it drew, a reader for the full text, and the open proposals. It polls the same
+read-only state every five seconds, so during a live sitting it moves. 1h/6h/24h/all
+windows.
+
 `serve` is read-only, localhost-only, and writes nothing. Participants never see it; it
 is the operator reading their own log. `?min=3` on the URL hides domains with fewer than
 three contributions.
