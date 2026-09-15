@@ -117,6 +117,17 @@ class EventLog:
         with self.lock:
             return self.conn.execute("select coalesce(sum(cost_usd),0) from ledger").fetchone()[0]
 
+    def median_recent_cost(self, n: int = 50) -> float:
+        """Median cost of the last n calls: what a typical turn currently costs this room."""
+        with self.lock:
+            rows = [x[0] for x in self.conn.execute(
+                "select cost_usd from ledger order by id desc limit ?", (n,))]
+        if not rows:
+            return 0.0
+        rows.sort()
+        mid = len(rows) // 2
+        return rows[mid] if len(rows) % 2 else (rows[mid - 1] + rows[mid]) / 2
+
     def cost_by_presence(self):
       with self.lock:
         return self.conn.execute(

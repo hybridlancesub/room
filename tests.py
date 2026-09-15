@@ -488,6 +488,24 @@ class RoomTest(unittest.TestCase):
         rec = [e for e in b.log.iter(kind="recall")][0]
         self.assertEqual(rec["payload"]["from"], "prior")
 
+    # the ledger is visible to participants ---------------------------------------------------------
+    def test_turn_carries_the_ledger_and_nothing_asks_them_to_act_on_it(self):
+        room, conn = self.make(2)
+        self.open(room)
+        seen = []
+        inner = conn.script
+        def spy(seat, system, messages):
+            seen.append(messages[-1]["content"]); return inner(seat, system, messages)
+        conn.script = spy
+        room.round()   # first turns: ledger empty (mock calls cost nothing), no LEDGER line
+        self.assertTrue(all("THE LEDGER" not in m for m in seen))
+        seat = room.seat_of["mock-0"][1]
+        class R: prompt_tokens = 100; completion_tokens = 10; cost_usd = 0.002
+        room._charge("mock-0", seat, R())   # costs now exist
+        room.round()
+        self.assertTrue(all("THE LEDGER" in m and "total spent $" in m for m in seen[2:]))
+        self.assertTrue(all("no action is expected" in m for m in seen[2:]), "shared as fact, not as a request")
+
 
 if __name__ == "__main__":
     unittest.main()

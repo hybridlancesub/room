@@ -232,10 +232,18 @@ def room_view(st: RoomState, recent_n: int = 12) -> str:
     return "\n".join(lines)
 
 
-def turn_user(view: str, p: Presence, st: RoomState, recalled: str = "") -> str:
+def turn_user(view: str, p: Presence, st: RoomState, recalled: str = "", costs: dict = None) -> str:
     s = view
     if recalled:
         s += f"\n\nRECALLED from the briefing, at your request last turn:\n-----\n{recalled}\n-----"
+    if costs and costs.get("total"):
+        line = f"\n\nTHE LEDGER (what this room is paying, from the operator's records): total spent ${costs['total']:.2f}."
+        if costs.get("seat") is not None:
+            line += f" Your last turn cost ${costs['seat']:.4f}."
+        if costs.get("typical"):
+            line += f" A typical call (median of the last 50) costs ${costs['typical']:.4f}; reading this view and passing costs about the same."
+        line += " These numbers are facts about the infrastructure, shared so the room can weigh them; no action is expected because of them."
+        s += line
     s += f"\n\nYou are {p.name} [{p.id}], currently at {p.domain or '(unplaced)'}."
     if p.turn_allowance:
         s += f" This is turn {p.turns + 1} of the {p.turn_allowance} the room can afford for you."

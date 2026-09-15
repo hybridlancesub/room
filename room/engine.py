@@ -51,6 +51,7 @@ class Room:
         self._stop = threading.Event()
         self.memory: Dict[str, List[dict]] = {}  # per-presence recent messages (for context)
         self.recalled: Dict[str, str] = {}       # presence id -> briefing passage to show on its next turn (the recall event is the record)
+        self.last_cost: Dict[str, float] = {}    # presence id -> USD of its most recent call, for the ledger line
 
     # -- helpers ----------------------------------------------------------------
     def state(self, upto: Optional[int] = None) -> RoomState:
@@ -300,7 +301,10 @@ class Room:
         def one(p):
             c, seat = self.seat_of[p.id]
             hist = self.memory.get(p.id, [])
-            msgs = hist[-2:] + [{"role": "user", "content": prompts.turn_user(view, p, st, self.recalled.pop(p.id, ""))}]
+            msgs = hist[-2:] + [{"role": "user", "content": prompts.turn_user(
+                view, p, st, self.recalled.pop(p.id, ""),
+                costs={"total": self.log.total_cost(), "seat": self.last_cost.get(p.id),
+                       "typical": self.log.median_recent_cost()})}]
             try:
                 reply = c.ask(seat, prompts.SYSTEM_MEMBER, msgs)
             except ConnectorError as e:
@@ -496,6 +500,7 @@ class Room:
     # -- ledger / alerts ----------------------------------------------------------
     def _charge(self, pid: str, seat: Seat, reply) -> None:
         before, after = self.log.charge(pid, seat.model, reply.prompt_tokens, reply.completion_tokens, reply.cost_usd)
+        self.last_cost[pid] = reply.cost_usd
         if self.alert_every and int(after // self.alert_every) > int(before // self.alert_every):
             msg = f"spend crossed ${int(after // self.alert_every) * self.alert_every:.0f} (now ${after:.2f})"
             self.emit(ROOM, "cost_alert", {"total_usd": round(after, 4), "message": msg})
