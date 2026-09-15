@@ -85,30 +85,41 @@ function open(state, data, quality, label) {
     stage(`opening — ${label}`);
     let field;
     try {
-      field = new Field({ canvas, data, quality, embedding: quality === LITE ? LITE_EMBEDDING : {} });
+      field = new Field({ canvas, data, quality });
     } catch (error) {
       return reject(error);
     }
+    stage('renderer constructed');
     window.__FIELD__ = field;
     field.start();
     stage('render loop started; waiting for the first frames');
 
+    // The watchdog counts wall time only while the page is actually visible:
+    // browsers stop requestAnimationFrame in hidden/background windows, so a
+    // tab left in the background would otherwise "fail" while nothing is wrong.
+    // The window is generous (25 s) because a weak GPU can spend many seconds
+    // compiling shaders for the first frame.
     let settled = false;
-    const giveUp = setTimeout(() => {
-      if (!settled) {
+    let lastFrame = performance.now();
+    field.bus.on('field:frame', () => { lastFrame = performance.now(); });
+    const giveUp = setInterval(() => {
+      if (settled) return;
+      if (document.hidden) { lastFrame = performance.now(); return; }
+      if (performance.now() - lastFrame > 25000) {
         settled = true;
+        clearInterval(giveUp);
         try { field.dispose(); } catch {}
         window.__FIELD__ = null;
-        reject(new Error('no frames within 12 s'));
+        reject(new Error('no frames within 25 s of the page being visible'));
       }
-    }, 12000);
+    }, 2000);
 
     field.bus.on('field:frame', function first({ frame }) {
       if (frame < 3) return;
       field.bus.off('field:frame', first);
       if (settled) return;
       settled = true;
-      clearTimeout(giveUp);
+      clearInterval(giveUp);
       stage(`frames are being produced — ${label}`);
       document.documentElement.dataset.field = 'running';
       document.documentElement.dataset.fieldQuality = label;
