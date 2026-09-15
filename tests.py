@@ -506,6 +506,42 @@ class RoomTest(unittest.TestCase):
         self.assertTrue(all("THE LEDGER" in m and "total spent $" in m for m in seen[2:]))
         self.assertTrue(all("no action is expected" in m for m in seen[2:]), "shared as fact, not as a request")
 
+    # the map -----------------------------------------------------------------------------------
+    def test_story_tags_are_verified_and_ungrounded_citations_are_caught(self):
+        from room.map import digest, check_story
+        room, conn = self.make(3)
+        self.open(room)
+        room.round(); room.round()
+        d = digest(room.log, 0)
+        self.assertTrue(d["threads"] and d["entries"] >= 6)
+        real = d["threads"][0]["id"]
+        good, bad = f"they spoke [#{real}]", "and then [#999999] happened"
+        self.assertEqual(check_story(good, room.log, d["upto"]), [])
+        self.assertEqual(check_story(bad, room.log, d["upto"]), [999999])
+        # a narrator that invents once is corrected; still-lying output is flagged, never silent
+        class FakeConn:
+            def __init__(self): self.calls = 0
+            def ask(self, seat, system, msgs):
+                self.calls += 1
+                from room.connector import Reply
+                return Reply(bad if self.calls == 1 else f"they spoke [#{real}]")
+        from room.map import tell_story
+        from room.connector import Seat
+        fc = FakeConn()
+        told = tell_story(d, fc, Seat("b", "bard", "x", "y", "z", {"prompt": 0, "completion": 0}), room.log, d["upto"])
+        self.assertEqual(told["tries"], 2)
+        self.assertEqual(told["ungrounded"], [])
+        class Liar(FakeConn):
+            def ask(self, seat, system, msgs):
+                from room.connector import Reply
+                return Reply(bad)
+        told2 = tell_story(d, Liar(), Seat("b", "bard", "x", "y", "z", {"prompt": 0, "completion": 0}), room.log, d["upto"])
+        self.assertEqual(told2["ungrounded"], [999999], "an ungrounded story is reported, not hidden")
+        from room.map import render_html
+        page = render_html(d, told2, "test sitting")
+        self.assertIn("do not exist", page)
+        self.assertIn(f"id='ev{real}'", page)
+
 
 if __name__ == "__main__":
     unittest.main()

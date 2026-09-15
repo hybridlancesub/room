@@ -147,16 +147,17 @@ function renderLanes() {
 }
 
 function renderProposals() {
-  const open = state.proposals.filter((p) => !p.resolved_at);
+  const props = state.proposals.slice().sort((a, b) => b.id - a.id);
   proposalsEl.replaceChildren();
-  if (!open.length) return;
+  if (!props.length) return;
   const h = document.createElement('h2');
-  h.textContent = 'Open proposals';
+  h.textContent = 'Proposals';
   proposalsEl.appendChild(h);
-  for (const p of open) {
+  for (const p of props) {
     const d = document.createElement('div');
     d.className = 'prop';
-    d.innerHTML = `<b>#${p.id} ${p.kind}</b>${p.value != null ? ` ${esc(String(p.value))}` : ''} by ${esc(p.by)} — ${p.consents.length} consent(s)<br>${esc(firstWords(p.reason, 24))}`;
+    const fate = p.resolved_at ? `<b class="adopted">adopted at #${p.resolved_at}</b>` : `open · ${p.consents.length} consent(s)`;
+    d.innerHTML = `<b>#${p.id} ${esc(p.kind)}</b>${p.value != null ? ` ${esc(String(p.value))}` : ''} by ${esc(p.by)} — ${fate}<br>${esc(firstWords(p.reason, 24))}`;
     proposalsEl.appendChild(d);
   }
 }

@@ -253,6 +253,31 @@ def cmd_export(args):
         print(f"wrote {args.out}")
 
 
+def cmd_map(args):
+    from .map import digest, render_html, tell_story
+    log = EventLog(args.db)
+    since = args.since
+    if since is None:  # default: the most recent sitting = everything after the last opt_in gate or 0
+        since = 0
+    upto = args.upto or log.last_id()
+    d = digest(log, since, upto)
+    told = None
+    if not args.no_story:
+        from . import nous
+        conn = nous.build(only=[args.story_model])
+        seats = conn.seats()
+        if not seats:
+            sys.exit(f"no seat matches --story-model {args.story_model!r}")
+        told = tell_story(d, conn, seats[0], log, upto)
+        print(f"story told by {told['model']} in {told['tries']} call(s), ${told['cost_usd']:.4f}; ungrounded tags: {told['ungrounded'] or 'none'}")
+    title = args.title or f"Sitting — events #{d['since']}..#{d['upto']}"
+    page = render_html(d, told, title)
+    out = args.out or f"records/map-{d['since']}-{d['upto']}.html"
+    os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
+    open(out, "w").write(page)
+    print(f"map written: {out}  (open in a browser; also served at /{os.path.basename(out)} while `serve` runs)")
+
+
 def cmd_serve(args):
     from .serve import serve
     here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -298,6 +323,7 @@ def main(argv=None):
     s = sub.add_parser("note"); s.add_argument("--text", required=True); s.set_defaults(fn=cmd_note)
     s = sub.add_parser("log"); s.add_argument("--since", type=int, default=0); s.add_argument("--kind"); s.add_argument("--actor"); s.add_argument("--full", action="store_true"); s.set_defaults(fn=cmd_log)
     s = sub.add_parser("cost"); s.set_defaults(fn=cmd_cost)
+    s = sub.add_parser("map"); s.add_argument("--since", type=int, default=None); s.add_argument("--upto", type=int, default=None); s.add_argument("--title"); s.add_argument("--out"); s.add_argument("--story-model", default="z-ai/glm-5.3$"); s.add_argument("--no-story", action="store_true", help="map only; no narrator call, zero spend"); s.set_defaults(fn=cmd_map)
     s = sub.add_parser("serve"); s.add_argument("--port", type=int, default=8080); s.add_argument("--viewer", default=None, help="directory of the viewer to serve at /; default firmament/"); s.set_defaults(fn=cmd_serve)
     s = sub.add_parser("export"); s.add_argument("--out", default=None); s.add_argument("--everything", action="store_true", help="include connector events and full texts"); s.set_defaults(fn=cmd_export)
     s = sub.add_parser("input"); s.add_argument("--source", required=True); s.add_argument("--text", required=True); s.set_defaults(fn=cmd_input)
