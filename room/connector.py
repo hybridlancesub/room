@@ -53,8 +53,10 @@ class OpenAICompatibleConnector:
     token refresh stays the provider's business, not the room's."""
 
     def __init__(self, provider_label: str, base_url: str, api_key_fn, seats: List[Seat],
-                 timeout: float = 240.0, max_tokens: int = 4000, reasoning_effort: str = "low"):
+                 timeout: float = 240.0, max_tokens: int = 4000, reasoning_effort: str = "low",
+                 json_mode: bool = True):
         self.reasoning_effort = reasoning_effort
+        self.json_mode = json_mode   # the room's actions are JSON; prose callers (the bard) turn this off
         self.provider_label = provider_label
         self.base_url = base_url.rstrip("/")
         self._key = api_key_fn
@@ -70,8 +72,9 @@ class OpenAICompatibleConnector:
             "model": seat.model,
             "messages": [{"role": "system", "content": system}, *messages],
             "max_tokens": self.max_tokens,
-            "response_format": {"type": "json_object"},
         }
+        if self.json_mode:
+            body["response_format"] = {"type": "json_object"}
         if self.reasoning_effort:
             body["reasoning"] = {"effort": self.reasoning_effort}
         reply = self._call(seat, body)

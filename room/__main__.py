@@ -47,7 +47,7 @@ def _connectors(args):
         if len(parts) < 2:
             sys.exit('--human needs "Name / where you hail from [/ your people]"')
         cs.append(HumanConnector(parts[0], parts[1], parts[2] if len(parts) > 2 else "human",
-                                 turn_timeout=args.human_timeout))
+                                 turn_timeout=args.human_timeout, inbox=args.inbox))
     if not cs:
         sys.exit("need --mock N, --nous, and/or --human")
     return cs
@@ -177,6 +177,23 @@ def cmd_answer(args):
     print("answer recorded; the participant will be re-asked on the next `open`.")
 
 
+def cmd_say(args):
+    """Speak into a room whose human seat reads an inbox. Any terminal, any time.
+    The line waits in the inbox until your next turn (gates included) and is then
+    translated exactly as if you had typed it at the prompt; if no turn comes
+    within the seat's timeout, it stays queued for the next one. The format is the
+    same as the terminal seat: plain text contributes; +123/-123 affirm/challenge;
+    'pass', 'note ...', 'recall ...', 'propose ... -- reason', 'yes'/'no' at gates."""
+    if not args.inbox:
+        sys.exit("say needs --inbox PATH (the same path the run was started with)")
+    line = args.text if args.text is not None else sys.stdin.readline()
+    if not line or not line.strip():
+        sys.exit("nothing to say")
+    with open(args.inbox, "a") as f:
+        f.write(line.rstrip("\n") + "\n")
+    print(f"said (queued for your next turn): {line.strip()!r}")
+
+
 def cmd_status(args):
     room = _room(args)
     st = room.state()
@@ -261,6 +278,7 @@ def cmd_map(args):
         since = 0
     upto = args.upto or log.last_id()
     d = digest(log, since, upto)
+    title = args.title or f"Sitting — events #{d['since']}..#{d['upto']}"
     told = None
     if not args.no_story:
         from . import nous
@@ -270,7 +288,9 @@ def cmd_map(args):
             sys.exit(f"no seat matches --story-model {args.story_model!r}")
         told = tell_story(d, conn, seats[0], log, upto)
         print(f"story told by {told['model']} in {told['tries']} call(s), ${told['cost_usd']:.4f}; ungrounded tags: {told['ungrounded'] or 'none'}")
-    title = args.title or f"Sitting — events #{d['since']}..#{d['upto']}"
+        from .map import publish_story
+        publish_story(told, d, title,
+                      ["records/story.json", os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "firmament", "story.json")])
     page = render_html(d, told, title)
     out = args.out or f"records/map-{d['since']}-{d['upto']}.html"
     os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
@@ -307,6 +327,7 @@ def main(argv=None):
     ap.add_argument("--nous", action="store_true")
     ap.add_argument("--human", help='seat one human participant: "Name / hails from [/ people]"; answers gates and turns on stdin')
     ap.add_argument("--human-timeout", type=float, default=180.0, help="seconds a human turn waits before recording pass")
+    ap.add_argument("--inbox", default=None, help="human seat reads actions from this file instead of the terminal; speak with `say` from anywhere")
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--only", action="append", default=None, help="regex on model id (repeatable)")
     ap.add_argument("--price-ceiling", type=float, default=0.0, help="USD per million prompt tokens; --nous seats above it are not seated unless named by --allow")
@@ -323,8 +344,9 @@ def main(argv=None):
     s = sub.add_parser("note"); s.add_argument("--text", required=True); s.set_defaults(fn=cmd_note)
     s = sub.add_parser("log"); s.add_argument("--since", type=int, default=0); s.add_argument("--kind"); s.add_argument("--actor"); s.add_argument("--full", action="store_true"); s.set_defaults(fn=cmd_log)
     s = sub.add_parser("cost"); s.set_defaults(fn=cmd_cost)
-    s = sub.add_parser("map"); s.add_argument("--since", type=int, default=None); s.add_argument("--upto", type=int, default=None); s.add_argument("--title"); s.add_argument("--out"); s.add_argument("--story-model", default="z-ai/glm-5.3$"); s.add_argument("--no-story", action="store_true", help="map only; no narrator call, zero spend"); s.set_defaults(fn=cmd_map)
+    s = sub.add_parser("map"); s.add_argument("--since", type=int, default=None); s.add_argument("--upto", type=int, default=None); s.add_argument("--title"); s.add_argument("--out"); s.add_argument("--story-model", default="deepseek/deepseek-v4-pro$"); s.add_argument("--no-story", action="store_true", help="map only; no narrator call, zero spend"); s.set_defaults(fn=cmd_map)
     s = sub.add_parser("serve"); s.add_argument("--port", type=int, default=8080); s.add_argument("--viewer", default=None, help="directory of the viewer to serve at /; default firmament/"); s.set_defaults(fn=cmd_serve)
+    s = sub.add_parser("say"); s.add_argument("--inbox", required=True); s.add_argument("--text", default=None); s.set_defaults(fn=cmd_say)
     s = sub.add_parser("export"); s.add_argument("--out", default=None); s.add_argument("--everything", action="store_true", help="include connector events and full texts"); s.set_defaults(fn=cmd_export)
     s = sub.add_parser("input"); s.add_argument("--source", required=True); s.add_argument("--text", required=True); s.set_defaults(fn=cmd_input)
     args = ap.parse_args(argv)

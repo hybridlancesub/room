@@ -23,9 +23,11 @@ The reply format is plain text, translated to the same JSON actions models send:
 from __future__ import annotations
 
 import json
+import os
 import select
 import sys
 import threading
+import time
 from typing import List, Optional
 
 from .connector import Reply, Seat
@@ -34,13 +36,27 @@ _print_lock = threading.Lock()
 
 
 class HumanConnector:
+    """A person's seat. Two modes:
+
+    - terminal (default): the prompt and the view print here; you answer on stdin.
+    - inbox (inbox=path): the room runs in the background; when it is your turn it waits
+      for a line to appear in the inbox file. You speak from ANY terminal with the `say`
+      command (or by appending a line yourself). No tmux, no attached session; if no line
+      arrives within the turn timeout, the turn is recorded as pass, exactly as before.
+    """
+
     def __init__(self, name: str, hails_from: str, people: str = "human",
-                 turn_timeout: float = 180.0, infile=None, outfile=None):
+                 turn_timeout: float = 180.0, infile=None, outfile=None, inbox: str = None):
         self.seat = Seat(id="human__" + _slug(name), name=name, hails_from=hails_from, people=people,
                          model="human", pricing={"prompt": 0.0, "completion": 0.0})
         self.turn_timeout = turn_timeout
         self.infile = infile or sys.stdin
         self.outfile = outfile or sys.stdout
+        self.inbox = inbox
+        self._inbox_pos = 0
+        if inbox:
+            open(inbox, "a").close()          # exists
+            self._inbox_pos = os.path.getsize(inbox)   # only lines written from now on count
 
     def seats(self) -> List[Seat]:
         return [self.seat]
@@ -82,6 +98,8 @@ class HumanConnector:
         self.outfile.flush()
 
     def _read_line(self, timeout: Optional[float]) -> Optional[str]:
+        if self.inbox:
+            return self._read_inbox(timeout)
         if timeout is None:
             line = self.infile.readline()
             return line if line else None
@@ -90,6 +108,22 @@ class HumanConnector:
             return None
         line = self.infile.readline()
         return line if line else None
+
+    def _read_inbox(self, timeout: Optional[float]) -> Optional[str]:
+        deadline = None if timeout is None else time.time() + timeout
+        while True:
+            with open(self.inbox, "r") as f:
+                f.seek(self._inbox_pos)
+                line = f.readline()
+                if line:
+                    self._inbox_pos = f.tell()
+                    line = line.strip()
+                    if line:
+                        return line
+                    continue    # blank lines are ignored, not passes, in inbox mode
+            if deadline is not None and time.time() >= deadline:
+                return None
+            time.sleep(0.5)
 
 
 def translate(line: str, *, gate: bool = False, entry: bool = False, delivery: bool = False) -> dict:

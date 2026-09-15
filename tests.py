@@ -542,6 +542,41 @@ class RoomTest(unittest.TestCase):
         self.assertIn("do not exist", page)
         self.assertIn(f"id='ev{real}'", page)
 
+    # inbox seat --------------------------------------------------------------------------------
+    def test_human_inbox_speaks_from_anywhere_and_timeout_passes(self):
+        import os, tempfile, threading, time as _t
+        from room.human import HumanConnector
+        inbox = os.path.join(self.tmp, "seat.inbox")
+        conn = MockConnector(2)
+        hc = HumanConnector("Chance", "Tejas", turn_timeout=1.0, inbox=inbox)
+        log = EventLog(os.path.join(self.tmp, "inbox.db"))
+        room = Room(log, [conn, hc], alert_fn=lambda m: None, parallel=2)
+        room.invite_all()
+        # gate 1 waits on the inbox; speak from "another terminal" by appending a line
+        threading.Timer(0.3, lambda: open(inbox, "a").write("yes\n")).start()
+        room.invite_text(INVITE)
+        room.run_invitation()
+        st = room.state()
+        self.assertEqual(st.presences["human__chance"].state, ACCEPTED)
+        room.brief(BRIEF)
+        threading.Timer(0.3, lambda: open(inbox, "a").write("received\n")).start()
+        room.run_delivery()
+        threading.Timer(0.3, lambda: open(inbox, "a").write("yes\n")).start()
+        room.run_opt_in()
+        self.assertEqual(room.state().presences["human__chance"].state, IN)
+        # a turn with no line in time is a pass
+        t0 = _t.time()
+        room.round()
+        self.assertLess(_t.time() - t0, 5)
+        notes = [e for e in log.iter(actor="human__chance") if e["kind"] == "note"]
+        self.assertTrue(any("(pass)" in e["payload"].get("content", "") for e in notes))
+        # a queued line is spoken at the next turn
+        open(inbox, "a").write("@watching I am here, observing\n")
+        room.round()
+        contribs = [e for e in log.iter(actor="human__chance") if e["kind"] == "contribute"]
+        self.assertEqual(contribs[-1]["payload"]["content"], "I am here, observing")
+        self.assertEqual(contribs[-1]["payload"]["domain"], "watching")
+
 
 if __name__ == "__main__":
     unittest.main()

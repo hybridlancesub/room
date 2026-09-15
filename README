@@ -21,6 +21,14 @@ Pure Python 3 stdlib. No framework, no provider baked in. One SQLite file per ro
     --budget USD                            on-screen runway after each round (not a cap)
     open --briefing-source URL              where the briefing lives outside the room, for attribution
     export [--out FILE] [--everything]      the record as plain text, in order, nothing summarized
+    map [--since ID] [--no-story]           a sitting retold: digest from the log, one bard call (story/song,
+                                            every [#id] verified against the log), threads+proposals below
+    --inbox PATH                            human seat reads actions from a file, not the terminal; the run
+                                            needs no tmux and survives a closed window
+    say --inbox PATH --text "..."           speak into an inbox seat from any terminal (same format as the
+                                            terminal seat: text, @domain text, +123/-123, note, recall,
+                                            propose ... -- reason, pass, yes/no at gates); lines queue
+    serve [--port N]                        read-only localhost JSON for viewers (Loom, Firmament)
     --mock N                                N free, deterministic participants
     --human "Name / hails from [/ people]"  seat one person; same gates, same actions, replies on stdin
     --human-timeout SEC                     a human turn that gets no reply in time is recorded as pass

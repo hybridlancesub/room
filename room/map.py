@@ -103,20 +103,47 @@ def check_story(story: str, log: EventLog, upto: int) -> List[int]:
 def tell_story(d: Dict, connector, seat, log: EventLog, upto: int) -> Dict:
     """One model call (plus at most one correction pass). Returns story + grounding report."""
     msgs = [{"role": "user", "content": digest_text(d) + "\n\nRetell this sitting."}]
-    reply = connector.ask(seat, STORY_SYSTEM, msgs)
-    story = reply.text.strip()
-    bad = check_story(story, log, upto)
-    tries = 1
-    if bad:
-        msgs += [{"role": "assistant", "content": story},
-                 {"role": "user", "content": f"These tags do not exist in the record: {bad}. Retell, citing only real event ids; where you cannot cite, do not claim."}]
+    saved, connector.json_mode = getattr(connector, "json_mode", True), False
+    try:
         reply = connector.ask(seat, STORY_SYSTEM, msgs)
+    finally:
+        connector.json_mode = saved
+    story = reply.text.strip()
+    if not TAG_RE.search(story):
+        story = ""   # a telling that cites nothing cannot be checked; treat it as no telling
+    bad = check_story(story, log, upto) if story else []
+    tries = 1
+    if bad or not story:
+        msgs += [{"role": "assistant", "content": story or "(no usable telling was produced)"},
+                 {"role": "user", "content": ("These tags do not exist in the record: " + str(bad) + ". " if bad else "")
+                  + "Retell the sitting as prose (not JSON), citing only real event ids as [#id]; where you cannot cite, do not claim."}]
+        connector.json_mode = False
+        reply = connector.ask(seat, STORY_SYSTEM, msgs)
+        connector.json_mode = saved
         story = reply.text.strip()
-        bad = check_story(story, log, upto)
+        if not TAG_RE.search(story):
+            story = ""
+        bad = check_story(story, log, upto) if story else []
         tries = 2
     return {"story": story, "ungrounded": bad, "tries": tries,
             "narrator": seat.name, "model": seat.model,
             "prompt_tokens": reply.prompt_tokens, "cost_usd": getattr(reply, "cost_usd", 0.0)}
+
+
+def publish_story(told: Dict, d: Dict, title: str, paths: List[str]) -> None:
+    """Write the telling as story.json wherever a viewer can poll it (the Loom).
+    The story is data here, not truth: it carries its own grounding report."""
+    if not told.get("story"):
+        return   # nothing verified was told; the previous story (if any) stays
+    payload = {"title": title, "since": d["since"], "upto": d["upto"], "told_at": time.time(), **told}
+    body = json.dumps(payload, ensure_ascii=False)
+    for path in paths:
+        try:
+            import os
+            os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+            open(path, "w").write(body)
+        except OSError:
+            pass
 
 
 def render_html(d: Dict, told: Optional[Dict], title: str) -> str:

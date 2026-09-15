@@ -68,6 +68,16 @@
   #reader-body { font-size: 0.82rem; white-space: pre-wrap; line-height: 1.7; }
   #reader .hint { color: var(--dim); font-size: 0.72rem; }
 
+  #telling { display: none; }
+  #telling.visible { display: block; }
+  #telling h2 { font-size: 0.66rem; font-weight: 400; letter-spacing: 0.24em;
+    text-transform: uppercase; color: var(--dim); margin-bottom: 0.4rem; }
+  #telling .who { font-size: 0.62rem; color: var(--dim); letter-spacing: 0.06em; margin-bottom: 0.7rem; }
+  #telling-body { white-space: pre-wrap; font-size: 0.84rem; line-height: 1.85;
+    border-left: 1px solid var(--line); padding-left: 0.9rem; }
+  a.tag { color: var(--affirm); text-decoration: none; cursor: pointer; }
+  a.tag:hover { text-decoration: underline; }
+  #telling .warn { color: #d88a8a; font-size: 0.68rem; margin-top: 0.5rem; }
   #proposals { margin-top: 1.6rem; }
   .prop { font-size: 0.7rem; color: var(--dim); padding: 0.3rem 0; border-bottom: 1px solid var(--line); }
   .prop b { color: var(--ink); font-weight: 400; }
@@ -88,6 +98,7 @@
 </header>
 <main>
   <div id="error"></div>
+  <section id="telling"><h2>The telling</h2><div class="who" id="telling-who"></div><div id="telling-body"></div><div class="warn" id="telling-warn"></div></section>
   <section id="feed"><h2>Latest — the room's own words</h2><div id="feed-list"></div></section>
   <section id="lanes"><h2>Domains over time</h2><div id="lane-list"></div><div class="axis"><div></div><div class="marks" id="marks"></div></div></section>
 </main>

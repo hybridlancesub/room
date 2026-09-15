@@ -10,7 +10,6 @@
  * live sitting it moves. Nothing here writes; nothing here summarizes — the feed
  * shows the participants' own handles, the reader their own words.
  */
-
 const REFRESH_MS = 5000;
 const FEED_MAX = 12;
 const LANES_MAX = 18;
@@ -35,8 +34,12 @@ for (const b of document.querySelectorAll('.windows button')) {
   });
 }
 
+let story = null;
+
 poll();
+pollStory();
 setInterval(poll, REFRESH_MS);
+setInterval(pollStory, 30000);
 
 async function poll() {
   try {
@@ -52,6 +55,50 @@ async function poll() {
     document.documentElement.dataset.loom = 'failed';
   }
 }
+
+async function pollStory() {
+  try {
+    const r = await fetch('./story.json?t=' + Date.now(), { cache: 'no-store' });
+    if (!r.ok) return;
+    story = await r.json();
+    renderStory();
+  } catch { /* no story published yet; the panel stays hidden */ }
+}
+
+function renderStory() {
+  if (!story) return;
+  const el = document.getElementById('telling');
+  el.classList.add('visible');
+  document.getElementById('telling-who').innerHTML =
+    `${esc(story.title)} · narrated by ${esc(story.narrator)} · events #${story.since}..#${story.upto} · ${story.tries} call(s), $${story.cost_usd.toFixed(4)} · every [#id] verified against the log`;
+  document.getElementById('telling-body').innerHTML = storyText(story.story);
+  const warn = document.getElementById('telling-warn');
+  warn.textContent = story.ungrounded?.length
+    ? `The narrator cited ids that do not exist: ${story.ungrounded.join(', ')}. Treat those claims as ungrounded.`
+    : '';
+}
+
+function storyText(s) {
+  return esc(s).replace(/\[#(\d+)\]/g, (_, id) => `<a class="tag" data-ev="${id}">[#${id}]</a>`);
+}
+
+document.addEventListener('click', (e) => {
+  const tag = e.target.closest('a.tag');
+  if (!tag) return;
+  const id = Number(tag.dataset.ev);
+  const entry = state.contributions.find((c) => c.id === id);
+  if (entry) { selected = entry; showEntry(entry); return; }
+  const prop = state.proposals.find((p) => p.id === id);
+  if (prop) {
+    selected = null;
+    readerEl.innerHTML =
+      `<div id="reader-who">Proposal #${prop.id}: ${esc(prop.kind)}${prop.value != null ? ' = ' + esc(String(prop.value)) : ''}</div>` +
+      `<div id="reader-meta">by ${esc(prop.by)} · ${prop.resolved_at ? `adopted at #${prop.resolved_at}` : `open · ${prop.consents.length} consent(s)`}</div>` +
+      `<div id="reader-body">${esc(prop.reason)}</div>`;
+    return;
+  }
+  readerEl.innerHTML = `<div id="reader-body"><span class="hint">#${id} is in the record but outside what the Loom carries (an arrival, a departure, a gate answer). Use: python3 -m room --db ROOM.db log --since ${id - 1} --full</span></div>`;
+});
 
 function entries() {
   return state.contributions.slice().sort((a, b) => a.ts - b.ts);
